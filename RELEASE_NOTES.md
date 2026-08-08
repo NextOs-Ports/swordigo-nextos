@@ -1,29 +1,56 @@
-# Swordigo v1.0.0 — universal ARM64 release
+# Swordigo v1.0.1 — audio fix
 
-One AArch64 loader for NextOS, ArkOS, ROCKNIX, muOS and Knulli class
-handhelds, audited at a maximum `GLIBC_2.27` requirement. It is a native,
-BYO-data port: the ZIP contains no game, APK, save or purchase state.
+Release 1.0.0 came back mute from field testing. This release fixes the audio
+path and makes it verifiable from the log. Nothing else changed: same universal
+AArch64 loader, same `GLIBC_2.27` ceiling, same BYO-data install.
 
-## Highlights
+## What was wrong
 
-- SDL2, OpenAL, mpg123, GLES1 and EGL are bound by SONAME and supplied by the
-  firmware, so no video or audio backend is ever forced by the launcher.
-- Fixed the `stack smashing detected` abort on Mali-G31/glibc devices: the game
-  reads its stack canary from the Bionic TLS slot, which the runtime now
-  anchors with a never-written thread-local pad.
-- Follows the real drawable size, so touch hitboxes and the viewport stay put
-  on firmwares that draw into a different size than the window they hand out.
-- ALSA-only devices get `alsoft.conf` with the mmap path disabled — the fix for
-  OpenAL Soft's broken-pipe stall in long sessions — applied only when no
-  PulseAudio socket exists.
-- One instance only, with the lock on the binary; a stale instance from a
-  crashed session is stopped first, matched by executable and working
-  directory rather than by name.
-- BYO data through NXExtract 1.2.4: transactional staging, structural
-  validation that accepts any legitimate 1.4.12 build, and a fast marker check
-  on later launches.
-- Never fails silently: a missing game folder or a refused second launch is
-  written to `swordigo-launcher-error.log` and printed on the console.
+The launcher exported `alsoft.conf` **only on firmwares without a PulseAudio
+socket**, so every box that runs a sound server got no backend order and none
+of the ALSA fixes the file carries. That is exactly the case in the tester
+logs: OpenAL Soft's PipeWire backend fails to start
+(`Failed to create PipeWire event context`), and because the library picks one
+playback backend at init and never reconsiders, the game drops through to raw
+ALSA — the mmap path the fleet already knows stalls silently on these
+handhelds. The log said `openal: ok` the whole time, because it never named the
+backend that actually won.
+
+## What changed
+
+- `alsoft.conf` is applied on **every** firmware and pins
+  `drivers = pipewire,pulse,alsa` — the order the approved Bully port proved on
+  PipeWire, Amlogic Mali-450 and ALSA-only R36S hardware. A sound server is
+  preferred over raw ALSA, and raw ALSA always gets `mmap = false`. It only
+  orders backends OpenAL Soft already has and still never forces one.
+- `PULSE_SERVER` also picks up the per-user `$XDG_RUNTIME_DIR/pulse/native`
+  socket.
+- The log now names the output that won:
+  `openal: ok ... spec='OpenAL Soft' out='HDMI_I2S' rate=48000`, plus a
+  `[launcher] openal ALSOFT_CONF=... pulse=...` line. **If a device is still
+  mute, that pair of lines says why.**
+- Music: an `MPG123_NEW_FORMAT` announcement on the first decode is no longer
+  treated as a decode failure, and a start request is kept until the track
+  really starts instead of being dropped after one empty prime.
+- Host test gate: the launcher may not make the OpenAL config conditional
+  again, and the config must keep the pinned order.
+
+## Verified
+
+Clean install of this ZIP on an Amlogic Mali-450 NextOS unit, on-device
+extraction from the APK, game running: the PulseAudio stream is live and
+unmuted (`application.name = "swordigo"`, `Corked: no`, `Mute: no`, 100%), and
+a 3-second capture of the sink monitor while the game plays measures peak 8376
+/ mean 1326 — real signal, not silence. Log line:
+`openal: ok ... spec='OpenAL Soft' out='HDMI_I2S' rate=48000`.
+
+## Installation
+
+Same as 1.0.0 — extract the ZIP **into the `ports` folder** of the ROM card
+(`mmc/roms/ports` on muOS), keep `Swordigo.sh` and the `swordigo` folder side
+by side, put a legally owned **Swordigo 1.4.12 APK** in `swordigo/gamedata/`,
+and launch from Ports. On NextOS/EmuELEC also copy the `.sh` to
+`roms/ports_scripts/`. Data already extracted by 1.0.0 is reused as is.
 
 ## Controls
 
@@ -32,47 +59,31 @@ magic, **Y** uses an item, **LB** equips magic, **Start** opens the menu,
 **RB** goes back. The right stick drives an on-screen cursor and **R3** taps.
 **SELECT + START** exits to the frontend.
 
-## Installation
-
-1. Extract the ZIP **into the `ports` folder** of the ROM card — `roms/ports/`
-   on ArkOS/ROCKNIX/Knulli, `mmc/roms/ports` on muOS. `Swordigo.sh` and the
-   `swordigo` folder must sit side by side. On NextOS/EmuELEC also copy the
-   `.sh` to `roms/ports_scripts/`.
-2. Put a legally owned **Swordigo 1.4.12 APK** (`com.touchfoo.swordigo`,
-   containing `lib/arm64-v8a/libswordigo.so`) in `swordigo/gamedata/`.
-3. Launch **Swordigo** from Ports and let NXExtract finish once.
-
-## Verified
-
-Proven end to end on an ArkOS R36S-class unit (RK3326, Mali-G31, glibc 2.30,
-640x480): clean install from this ZIP, on-device extraction with the progress
-screen, title, gameplay, audio and music, exit chord, frontend restored.
-
-SHA-256:
-
-```text
-903fd2a9d58629ec0ce190f999086a7ce1d45162f721402e50f463309094b100  Swordigo.NextOS-v1.0.0.zip
-```
-
 ---
 
-# Swordigo v1.0.0 — release universal ARM64
+# Swordigo v1.0.1 — correção de áudio
 
-Um único loader AArch64 para aparelhos NextOS, ArkOS, ROCKNIX, muOS e Knulli,
-auditado com teto `GLIBC_2.27`. Port nativo **BYO-data**: o ZIP não traz o
-jogo, APK, save nem estado de compra.
+A 1.0.0 voltou muda do teste de campo. Esta versão corrige o caminho de áudio e
+deixa ele conferível pelo log. Nada mais mudou: mesmo loader universal AArch64,
+mesmo teto `GLIBC_2.27`, mesma instalação BYO-data.
 
-- SDL2, OpenAL, mpg123, GLES1 e EGL amarrados por SONAME — quem entrega é o
-  firmware; o launcher nunca força driver de vídeo ou áudio.
-- Corrigido o `stack smashing detected` em aparelho Mali-G31/glibc: o jogo lê o
-  canário do slot TLS do bionic, agora ancorado por um pad thread-local.
-- Segue o drawable real; `alsoft.conf` sem mmap em aparelho só-ALSA; instância
-  única com trava no binário e limpeza de instância órfã.
-- Dados BYO por NXExtract 1.2.4, com validação estrutural que aceita qualquer
-  build legítima da 1.4.12.
-- Nunca falha calado: o motivo vai para `swordigo-launcher-error.log` e para a
-  tela.
+**O que estava errado:** o launcher só exportava o `alsoft.conf` em firmware
+**sem** socket do PulseAudio. Logo, todo aparelho com servidor de som ficava sem
+ordem de backend e sem nenhuma das correções do arquivo. É o caso dos logs dos
+testadores: o backend PipeWire do OpenAL Soft não sobe
+(`Failed to create PipeWire event context`) e, como a biblioteca escolhe **um**
+backend na inicialização e não reconsidera, o jogo cai no ALSA cru — o caminho
+mmap que a frota já sabe que trava calado nesses aparelhos. E o log dizia
+`openal: ok` o tempo todo, porque nunca dizia qual backend venceu.
 
-Instalação: extraia o ZIP **dentro de `roms/ports/`** (`mmc/roms/ports` no
-muOS), coloque o APK legal 1.4.12 em `swordigo/gamedata/` e abra em Ports.
-No NextOS/EmuELEC, copie também o `.sh` para `roms/ports_scripts/`.
+**O que mudou:** o `alsoft.conf` passa a valer em **todo** firmware e fixa
+`drivers = pipewire,pulse,alsa` (a ordem provada pelo Bully aprovado em
+PipeWire, Mali-450 e R36S só-ALSA); servidor de som na frente do ALSA cru, e
+ALSA cru sempre com `mmap = false`. O `PULSE_SERVER` também aceita o socket em
+`$XDG_RUNTIME_DIR`. O log agora nomeia a saída que venceu — se algum aparelho
+continuar mudo, é essa linha que diz o motivo. A música também ficou mais
+robusta (`MPG123_NEW_FORMAT` e retentativa do play).
+
+**Comprovação:** instalação limpa deste ZIP em Mali-450/NextOS, extração no
+aparelho e jogo rodando: stream vivo e sem mute no PulseAudio e captura de 3s do
+monitor do sink com pico 8376 / média 1326 — sinal real, não silêncio.

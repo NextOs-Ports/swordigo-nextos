@@ -214,6 +214,13 @@ static ALCdevice *g_al_device;
 static ALCcontext *g_al_context;
 static int g_al_active;
 
+static int al_device_frequency(void) {
+  ALCint frequency = 0;
+  if (g_al_device)
+    alcGetIntegerv(g_al_device, ALC_FREQUENCY, 1, &frequency);
+  return (int)frequency;
+}
+
 void init_openal(void) {
   if (g_al_active) return;
   g_al_device = alcOpenDevice(NULL);
@@ -226,7 +233,17 @@ void init_openal(void) {
     g_al_context = NULL; g_al_device = NULL; return;
   }
   g_al_active = 1;
-  debugPrintf("openal: ok device=%p ctx=%p\n", (void *)g_al_device, (void *)g_al_context);
+  // The device specifier names the backend that actually won (PipeWire, Pulse,
+  // ALSA...).  Release 1.0.0 logged only "ok", so a mute report could not be
+  // told apart from working audio: the backend has to be in the log.
+  // ALC_ALL_DEVICES_SPECIFIER carries the backend's own device name, so a mute
+  // "No Output" fallback is obvious in a bug report instead of looking healthy.
+  const ALCchar *specifier = alcGetString(g_al_device, ALC_DEVICE_SPECIFIER);
+  const ALCchar *device_name = alcGetString(g_al_device, ALC_ALL_DEVICES_SPECIFIER);
+  debugPrintf("openal: ok device=%p ctx=%p spec='%s' out='%s' rate=%d\n",
+              (void *)g_al_device, (void *)g_al_context,
+              specifier ? specifier : "?", device_name ? device_name : "?",
+              al_device_frequency());
 }
 void deinit_openal(void) {
   if (!g_al_active) return;

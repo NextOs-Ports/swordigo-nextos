@@ -75,6 +75,11 @@ static size_t fill_buffer(unsigned char *buf) {
     total += done;
     if (err == MPG123_OK)
       continue;
+    // Locking the output format makes mpg123 announce it once on the first
+    // read; treating that as an error would prime zero buffers and the track
+    // would never start.  Same handling the Sonic 4 port and LOVE use.
+    if (err == MPG123_NEW_FORMAT)
+      continue;
     if (err == MPG123_DONE) {
       if (s_loop) {
         mpg123_seek(s_mh, 0, SEEK_SET);
@@ -129,7 +134,8 @@ static void stop_source(void) {
   }
 }
 
-static void prime_and_play(void) {
+// returns the number of buffers queued; 0 means the track did not start
+static int prime_and_play(void) {
   unsigned char buf[BUFFER_SIZE];
   stop_source();
   int primed = 0;
@@ -143,6 +149,7 @@ static void prime_and_play(void) {
   }
   if (primed > 0)
     alSourcePlay(s_source);
+  return primed;
 }
 
 static void *stream_thread(void *arg) {
@@ -160,13 +167,14 @@ static void *stream_thread(void *arg) {
         prime_and_play();
     }
 
-    // 2. start request
+    // 2. start request -- the request is only consumed once the track really
+    // started, so a decoder that had nothing ready yet is retried next tick
+    // instead of leaving the game silent for the rest of the session.
     if (s_want_play && s_open) {
       ALint state = 0;
       alGetSourcei(s_source, AL_SOURCE_STATE, &state);
-      if (state != AL_PLAYING && state != AL_PAUSED)
-        prime_and_play();
-      s_want_play = 0;
+      if (state == AL_PLAYING || state == AL_PAUSED || prime_and_play() > 0)
+        s_want_play = 0;
     }
 
     // 3. pause/resume edge

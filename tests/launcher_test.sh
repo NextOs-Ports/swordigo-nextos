@@ -16,6 +16,18 @@ if grep -qE '^[^#]*export[[:space:]]+SDL_(VIDEODRIVER|AUDIODRIVER)=' "$ROOT/run.
   fail 'the launcher forces an SDL video or audio driver'
 fi
 
+# Audio: release 1.0.0 shipped mute because the OpenAL config was applied only
+# on firmwares without a PulseAudio socket, so every box with a sound server ran
+# with no backend order and no ALSA fix.  The config must be unconditional and
+# it must pin the order.
+grep -qE '^\s*drivers\s*=\s*pipewire,pulse,alsa\s*$' "$ROOT/alsoft.conf" ||
+  fail 'alsoft.conf does not pin the backend order'
+if grep -n 'ALSOFT_CONF=' "$ROOT/run.sh" | grep -q 'pulse_available'; then
+  fail 'ALSOFT_CONF is applied only on some firmwares'
+fi
+grep -q 'ALSOFT_CONF="$GAMEDIR/alsoft.conf"' "$ROOT/run.sh" ||
+  fail 'the launcher does not point OpenAL at the shipped config'
+
 # The visible launcher must stay thin enough to read at a glance.
 [ "$(wc -c < "$ROOT/Swordigo.sh")" -le 3072 ] ||
   fail 'the visible PortMaster launcher is no longer thin'

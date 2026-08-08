@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.1 — 2026-08-08
+
+- Sound is back. Release 1.0.0 exported `alsoft.conf` only on firmwares with no
+  PulseAudio socket, so every box that has a sound server ran with no backend
+  order and none of the ALSA fixes the file carries. That is exactly the mute
+  case in the tester logs: OpenAL Soft's PipeWire backend fails to start
+  (`Failed to create PipeWire event context`), and since the library picks one
+  playback backend at init and never reconsiders, the game drops through to raw
+  ALSA — the mmap path the fleet knows to stall silently on these handhelds.
+- The config is now applied on every firmware and pins
+  `drivers = pipewire,pulse,alsa`, the order the approved Bully port proved on
+  PipeWire, Amlogic Mali-450 and ALSA-only R36S hardware: a sound server is
+  preferred over raw ALSA, and raw ALSA always gets `mmap = false`. It still
+  only orders backends OpenAL Soft already has and never forces one.
+- `PULSE_SERVER` also picks up the per-user `$XDG_RUNTIME_DIR/pulse/native`
+  socket, so the pulse backend finds the server on session-scoped firmwares.
+- The log now names the backend that actually won
+  (`openal: ok ... backend='...' rate=...`): a silently mute backend used to be
+  indistinguishable from working audio in a bug report.
+- Music: an `MPG123_NEW_FORMAT` announcement on the first decode is no longer
+  treated as a decode failure, and a start request is kept until the track
+  really starts instead of being dropped after one empty prime.
+
 ## 1.0.0 — 2026-08-08
 
 - First universal ARM64 release: one loader for NextOS, ArkOS, ROCKNIX, muOS

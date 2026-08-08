@@ -182,21 +182,27 @@ if [ -z "${SDL_GAMECONTROLLERCONFIG_FILE:-}" ]; then
   done
 fi
 
+# Audio, universal: the config only orders the backends OpenAL Soft already has
+# and never forces one, so it applies on every firmware -- not just the ALSA-only
+# ones.  Release 1.0.0 skipped it whenever a PulseAudio socket existed, which is
+# precisely the case in the mute tester logs: the firmware has a sound server,
+# OpenAL Soft's PipeWire backend fails to start, the library falls through to
+# raw ALSA and runs there with none of the fixes this file carries.
+if [ -z "${ALSOFT_CONF:-}" ] && [ -r "$GAMEDIR/alsoft.conf" ]; then
+  export ALSOFT_CONF="$GAMEDIR/alsoft.conf"
+fi
+# The pulse backend needs the server address when the firmware does not export
+# it; the XDG runtime socket covers the per-user PipeWire/PulseAudio sessions.
+pulse_runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u 2>/dev/null || echo 0)}
 pulse_available=0
-for pulse_socket in /var/run/pulse/native /run/pulse/native; do
+for pulse_socket in /run/pulse/native /var/run/pulse/native \
+  "$pulse_runtime_dir/pulse/native"; do
   if [ -S "$pulse_socket" ]; then
     pulse_available=1
     [ -z "${PULSE_SERVER:-}" ] && export PULSE_SERVER=unix:$pulse_socket
     break
   fi
 done
-# ALSA-only firmwares: OpenAL Soft's mmap path stalls with a broken pipe in
-# long sessions on RK3326-class handhelds.  Never forces a driver -- it only
-# tunes the backend the firmware already chose.
-if [ "$pulse_available" -eq 0 ] && [ -z "${ALSOFT_CONF:-}" ] &&
-   [ -r "$GAMEDIR/alsoft.conf" ]; then
-  export ALSOFT_CONF="$GAMEDIR/alsoft.conf"
-fi
 
 memory_kib=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
 case "$memory_kib" in ''|*[!0-9]*) memory_kib=0 ;; esac
@@ -231,6 +237,9 @@ printf '[launcher] binary=%s video=%s audio=%s controller=%s\n' \
   "${SDL_VIDEODRIVER:-firmware-auto}" \
   "${SDL_AUDIODRIVER:-firmware-auto}" \
   "${SDL_GAMECONTROLLERCONFIG:+PortMaster mapping}"
+printf '[launcher] openal ALSOFT_CONF=%s (drivers=pipewire,pulse,alsa) pulse=%s\n' \
+  "${ALSOFT_CONF:-none}" "${PULSE_SERVER:-$([ "$pulse_available" -eq 1 ] &&
+    echo firmware-managed || echo none)}"
 
 if command -v pm_platform_helper >/dev/null 2>&1; then
   pm_platform_helper "$BIN" >/dev/null ||
