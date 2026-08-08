@@ -241,6 +241,29 @@ printf '[launcher] openal ALSOFT_CONF=%s (drivers=pipewire,pulse,alsa) pulse=%s\
   "${ALSOFT_CONF:-none}" "${PULSE_SERVER:-$([ "$pulse_available" -eq 1 ] &&
     echo firmware-managed || echo none)}"
 
+# A process still holding the display when the game starts is one of the ways a
+# port ends up running behind a picture nobody can see, so the log says who had
+# it.  Nothing is stopped here: the frontend is PortMaster's business.
+report_display_holders() {
+  local process pid command target found=
+  for process in /proc/[0-9]*; do
+    pid=${process##*/}
+    [ "$pid" = "$$" ] && continue
+    for descriptor in "$process"/fd/*; do
+      target=$(command readlink "$descriptor" 2>/dev/null) || continue
+      case "$target" in
+        /dev/dri/*|/dev/fb[0-9]*) ;;
+        *) continue ;;
+      esac
+      command=$(cat "$process/comm" 2>/dev/null || echo '?')
+      found="${found:+$found, }$command($pid)->$target"
+      break
+    done
+  done
+  printf '[launcher] display held by: %s\n' "${found:-nobody}"
+}
+report_display_holders
+
 if command -v pm_platform_helper >/dev/null 2>&1; then
   pm_platform_helper "$BIN" >/dev/null ||
     launcher_error 'PortMaster could not prepare frontend lifecycle'

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.3 — 2026-08-08
+
+- The window is created with `SDL_WINDOW_FULLSCREEN_DESKTOP` instead of
+  exclusive fullscreen. Exclusive fullscreen asks KMSDRM for a modeset to the
+  size we requested, so a firmware that reports a desktop mode its panel does
+  not actually drive hands back a window that never reaches the screen — black
+  picture, engine alive. Every published port on this fleet already defaults to
+  desktop fullscreen (Horizon Chase, Prizefighters 2, Hitman GO, Geometry Dash);
+  `SWORDIGO_EXCLUSIVE_FULLSCREEN=1` keeps the old behaviour, and window creation
+  falls back to exclusive on its own if desktop fullscreen is refused.
+- The release now ships the test that decides a black-screen report, so the next
+  one can be diagnosed without owning the device: one frame is read back a few
+  seconds in and logged as
+  `gl: frame probe 640x480 rgb_non_black=76.1% alpha255=99.0% alpha0=0.0%`.
+  Colour with alpha 0 means the scanout composited the frame away, colour with
+  alpha 255 means the picture is fine and the wrong surface is presented, and an
+  empty frame means the engine drew nothing.
+- The launcher logs which processes still hold `/dev/dri/*` or `/dev/fb*` when
+  the game starts (`[launcher] display held by: ...`). It stops nothing — the
+  frontend stays PortMaster's business — it only makes the answer visible.
+- Ruled out by evidence, recorded so nobody re-runs it: the extractor is not
+  involved in the black screen. Its progress UI starts only after the fast
+  marker check, and the failing logs say `fast validation marker accepted`, so
+  no UI process ever existed in those boots.
+
 ## 1.0.2 — 2026-08-08
 
 - Black screen with the game clearly alive (music playing, input answering) on

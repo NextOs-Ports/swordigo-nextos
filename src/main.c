@@ -671,9 +671,28 @@ static int gl_init(void) {
   SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
+  /* Exclusive fullscreen asks KMSDRM for a modeset to the size we requested; a
+   * firmware that reports a desktop mode its panel does not actually drive then
+   * hands back a window that never reaches the screen -- black picture with the
+   * engine alive.  FULLSCREEN_DESKTOP keeps the mode the firmware already set,
+   * which is what every published port on this fleet does (Horizon Chase,
+   * Prizefighters 2, Hitman GO, Geometry Dash).  The escape hatch stays for a
+   * device that genuinely wants the modeset. */
+  const char *exclusive = getenv("SWORDIGO_EXCLUSIVE_FULLSCREEN");
+  Uint32 fullscreen = (exclusive && *exclusive == '1')
+                          ? SDL_WINDOW_FULLSCREEN
+                          : SDL_WINDOW_FULLSCREEN_DESKTOP;
   g_win = SDL_CreateWindow("Swordigo", SDL_WINDOWPOS_UNDEFINED,
                            SDL_WINDOWPOS_UNDEFINED, screen_width, screen_height,
-                           SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+                           SDL_WINDOW_OPENGL | fullscreen);
+  if (!g_win && fullscreen == SDL_WINDOW_FULLSCREEN_DESKTOP) {
+    debugPrintf("gl: fullscreen-desktop refused (%s); retrying exclusive\n",
+                SDL_GetError());
+    fullscreen = SDL_WINDOW_FULLSCREEN;
+    g_win = SDL_CreateWindow("Swordigo", SDL_WINDOWPOS_UNDEFINED,
+                             SDL_WINDOWPOS_UNDEFINED, screen_width,
+                             screen_height, SDL_WINDOW_OPENGL | fullscreen);
+  }
   if (!g_win) {
     fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
     return -1;
@@ -710,9 +729,10 @@ static int gl_init(void) {
   debugPrintf("gl: GLES1.1 %dx%d alpha=%d depth=%d driver='%s'\n", screen_width,
               screen_height, got_alpha, got_depth,
               SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?");
-  debugPrintf("gl: renderer='%s' version='%s'\n",
+  debugPrintf("gl: renderer='%s' version='%s' fullscreen=%s\n",
               renderer ? (const char *)renderer : "?",
-              version ? (const char *)version : "?");
+              version ? (const char *)version : "?",
+              fullscreen == SDL_WINDOW_FULLSCREEN ? "exclusive" : "desktop");
   return 0;
 }
 
@@ -724,6 +744,36 @@ static int gl_init(void) {
 #ifndef GL_FRAMEBUFFER_OES
 #define GL_FRAMEBUFFER_OES 0x8D40
 #endif
+
+/* Read the finished frame back once, a few seconds in, and log what is in it.
+ * A black-screen report from a device nobody here owns is otherwise a guessing
+ * game; this single line separates the three mechanisms the fleet has already
+ * paid for: colour with alpha 0 means the scanout composited the frame away,
+ * colour with alpha 255 means the picture is fine and the wrong surface is
+ * being presented, and an empty frame means the engine really drew nothing. */
+static void probe_frame_once(int width, int height) {
+  size_t pixels = (size_t)width * (size_t)height;
+  unsigned char *buffer = malloc(pixels * 4);
+  if (!buffer)
+    return;
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+
+  size_t coloured = 0, opaque = 0, transparent = 0;
+  for (size_t i = 0; i < pixels; i++) {
+    const unsigned char *p = buffer + i * 4;
+    if (p[0] || p[1] || p[2])
+      coloured++;
+    if (p[3] == 255)
+      opaque++;
+    else if (p[3] == 0)
+      transparent++;
+  }
+  debugPrintf("gl: frame probe %dx%d rgb_non_black=%.1f%% alpha255=%.1f%% "
+              "alpha0=%.1f%%\n",
+              width, height, coloured * 100.0 / pixels, opaque * 100.0 / pixels,
+              transparent * 100.0 / pixels);
+  free(buffer);
+}
 static void present_opaque_alpha(void) {
   static void (*bind_framebuffer_oes)(GLenum, GLuint);
   static int resolved = 0, logged = 0;
@@ -893,6 +943,8 @@ int main(int argc, char **argv) {
     updateApplication(fake_env, NULL, dt);
     drawApplication(fake_env, NULL);
     cursor_draw_overlay();
+    if (frame == 300)
+      probe_frame_once(screen_width, screen_height);
     present_opaque_alpha();
     SDL_GL_SwapWindow(g_win);
   }
