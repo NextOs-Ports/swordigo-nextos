@@ -46,6 +46,7 @@ mkdir -p "$GAME/gamedata" "$GAME/licenses"
 
 install -m 0755 "$BIN" "$GAME/swordigo"
 install -m 0755 "$ROOT/run.sh" "$GAME/run.sh"
+install -m 0644 "$ROOT/alsoft.conf" "$GAME/alsoft.conf"
 install -m 0644 "$ROOT/extractor.json" "$GAME/extractor.json"
 install -m 0644 "$ROOT/version.txt" "$GAME/version.txt"
 install -m 0644 "$ROOT/NOTICE.md" "$GAME/NOTICE.md"
