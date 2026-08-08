@@ -677,6 +677,21 @@ static int gl_init(void) {
   }
   SDL_GL_MakeCurrent(g_win, g_ctx);
   SDL_GL_SetSwapInterval(1);
+  /* The window size a firmware grants is not always the size it draws into
+   * (KMSDRM and scaled panels differ).  Touch hitboxes and the viewport must
+   * follow the real drawable, otherwise the HUD lands off-target on some
+   * devices -- the zoom class of bug seen in the LEGO/LOTR ports. */
+  {
+    int draw_w = 0, draw_h = 0;
+    SDL_GL_GetDrawableSize(g_win, &draw_w, &draw_h);
+    if (draw_w > 0 && draw_h > 0 &&
+        (draw_w != screen_width || draw_h != screen_height)) {
+      debugPrintf("gl: drawable %dx%d overrides window %dx%d\n", draw_w, draw_h,
+                  screen_width, screen_height);
+      screen_width = draw_w;
+      screen_height = draw_h;
+    }
+  }
   debugPrintf("gl: GLES1.1 %dx%d\n", screen_width, screen_height);
   return 0;
 }
