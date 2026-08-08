@@ -1,0 +1,7 @@
+.build/
+*.log
+gamedata/
+assets/
+res/
+libswordigo.so
+build/
