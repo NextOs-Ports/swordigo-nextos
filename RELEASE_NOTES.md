@@ -1,56 +1,60 @@
-# Swordigo v1.0.1 — audio fix
+# Swordigo v1.0.2 — black screen fix
 
-Release 1.0.0 came back mute from field testing. This release fixes the audio
-path and makes it verifiable from the log. Nothing else changed: same universal
-AArch64 loader, same `GLIBC_2.27` ceiling, same BYO-data install.
+Field testing on the R36S/ArkOS/DarkOS class came back with the game **running
+but the screen black**: music playing, input answering, log clean. This release
+fixes the known cause of that symptom and makes the next report diagnosable.
+1.0.1 (audio) is included.
 
 ## What was wrong
 
-The launcher exported `alsoft.conf` **only on firmwares without a PulseAudio
-socket**, so every box that runs a sound server got no backend order and none
-of the ALSA fixes the file carries. That is exactly the case in the tester
-logs: OpenAL Soft's PipeWire backend fails to start
-(`Failed to create PipeWire event context`), and because the library picks one
-playback backend at init and never reconsiders, the game drops through to raw
-ALSA — the mmap path the fleet already knows stalls silently on these
-handhelds. The log said `openal: ok` the whole time, because it never named the
-backend that actually won.
+The window was created with `SDL_GL_ALPHA_SIZE 8`. On a firmware whose scanout
+honours **per-pixel alpha** — a KMSDRM plane in `ARGB8888`, the R36S class — a
+frame the game leaves at alpha 0 is composited as *transparent*, which reads as
+a black screen while the engine is perfectly alive. Amlogic's OSD ignores alpha,
+which is why the identical build draws fine on NextOS hardware and the bug only
+showed up in the field.
 
 ## What changed
 
-- `alsoft.conf` is applied on **every** firmware and pins
-  `drivers = pipewire,pulse,alsa` — the order the approved Bully port proved on
-  PipeWire, Amlogic Mali-450 and ALSA-only R36S hardware. A sound server is
-  preferred over raw ALSA, and raw ALSA always gets `mmap = false`. It only
-  orders backends OpenAL Soft already has and still never forces one.
-- `PULSE_SERVER` also picks up the per-user `$XDG_RUNTIME_DIR/pulse/native`
-  socket.
-- The log now names the output that won:
-  `openal: ok ... spec='OpenAL Soft' out='HDMI_I2S' rate=48000`, plus a
-  `[launcher] openal ALSOFT_CONF=... pulse=...` line. **If a device is still
-  mute, that pair of lines says why.**
-- Music: an `MPG123_NEW_FORMAT` announcement on the first decode is no longer
-  treated as a decode failure, and a start request is kept until the track
-  really starts instead of being dropped after one empty prime.
-- Host test gate: the launcher may not make the OpenAL config conditional
-  again, and the config must keep the pinned order.
+- The window asks for **no alpha** in its config.
+- Because that attribute is a *minimum* and drivers hand out an alpha config
+  anyway (this very firmware grants `alpha=8` when asked for 0), every frame is
+  additionally forced **opaque immediately before the present**, rebinding
+  framebuffer 0 through `glBindFramebufferOES` first so the clear can never land
+  on a bound FBO — the trap that cost Horizon Chase v1.2.0.
+- The log now carries what a black-screen report needs:
+
+  ```text
+  gl: GLES1.1 1280x720 alpha=8 depth=24 driver='mali'
+  gl: renderer='Mali-450 MP' version='OpenGL ES-CM 1.1'
+  gl: opaque-alpha present active (fbo rebind=yes)
+  ```
+
+- From 1.0.1: `alsoft.conf` applies on every firmware and pins
+  `drivers = pipewire,pulse,alsa`; `PULSE_SERVER` also reads the per-user
+  runtime socket; the log names the audio output that won; music no longer
+  treats the first `MPG123_NEW_FORMAT` as a decode failure.
 
 ## Verified
 
-Clean install of this ZIP on an Amlogic Mali-450 NextOS unit, on-device
-extraction from the APK, game running: the PulseAudio stream is live and
-unmuted (`application.name = "swordigo"`, `Corked: no`, `Mute: no`, 100%), and
-a 3-second capture of the sink monitor while the game plays measures peak 8376
-/ mean 1326 — real signal, not silence. Log line:
-`openal: ok ... spec='OpenAL Soft' out='HDMI_I2S' rate=48000`.
+Measured on Mali-450 at 1280x720 with `glReadPixels` on both sides of the new
+present step: alpha went from **255 on 99.0%** of the frame to **255 on 100%**,
+and the **RGB bytes are identical** before and after — the clear fixes opacity
+without touching a pixel of image. Regression pass with the shipped ZIP: clean
+install, game running, audio streaming, frontend restored.
+
+**Not reproduced here:** the black screen itself needs an alpha-honouring
+firmware and every device on hand ignores alpha. This ships the mechanism the
+fleet has already paid for twice; if a device is still black, send
+`swordigo.log` — the three `gl:` lines above say which mechanism it is.
 
 ## Installation
 
-Same as 1.0.0 — extract the ZIP **into the `ports` folder** of the ROM card
-(`mmc/roms/ports` on muOS), keep `Swordigo.sh` and the `swordigo` folder side
-by side, put a legally owned **Swordigo 1.4.12 APK** in `swordigo/gamedata/`,
-and launch from Ports. On NextOS/EmuELEC also copy the `.sh` to
-`roms/ports_scripts/`. Data already extracted by 1.0.0 is reused as is.
+Extract the ZIP **into the `ports` folder** of the ROM card (`mmc/roms/ports` on
+muOS), keep `Swordigo.sh` and the `swordigo` folder side by side, put a legally
+owned **Swordigo 1.4.12 APK** in `swordigo/gamedata/`, and launch from Ports. On
+NextOS/EmuELEC also copy the `.sh` to `roms/ports_scripts/`. Data already
+extracted by an earlier release is reused as is.
 
 ## Controls
 
@@ -61,29 +65,28 @@ magic, **Y** uses an item, **LB** equips magic, **Start** opens the menu,
 
 ---
 
-# Swordigo v1.0.1 — correção de áudio
+# Swordigo v1.0.2 — correção de tela preta
 
-A 1.0.0 voltou muda do teste de campo. Esta versão corrige o caminho de áudio e
-deixa ele conferível pelo log. Nada mais mudou: mesmo loader universal AArch64,
-mesmo teto `GLIBC_2.27`, mesma instalação BYO-data.
+No teste de campo (R36S/ArkOS/DarkOS) o jogo **rodava com a tela preta**: música
+tocando, controle respondendo, log limpo.
 
-**O que estava errado:** o launcher só exportava o `alsoft.conf` em firmware
-**sem** socket do PulseAudio. Logo, todo aparelho com servidor de som ficava sem
-ordem de backend e sem nenhuma das correções do arquivo. É o caso dos logs dos
-testadores: o backend PipeWire do OpenAL Soft não sobe
-(`Failed to create PipeWire event context`) e, como a biblioteca escolhe **um**
-backend na inicialização e não reconsidera, o jogo cai no ALSA cru — o caminho
-mmap que a frota já sabe que trava calado nesses aparelhos. E o log dizia
-`openal: ok` o tempo todo, porque nunca dizia qual backend venceu.
+**Causa:** a janela era criada com `SDL_GL_ALPHA_SIZE 8`. Em firmware cujo
+scanout **honra alpha por pixel** (plano KMSDRM em `ARGB8888`), o quadro que o
+jogo deixa com alpha 0 é composto como *transparente* — ou seja, preto, com a
+engine viva. O OSD do Amlogic ignora alpha, e por isso a mesma build desenha
+normal no aparelho daqui e o defeito só apareceu na mão dos outros.
 
-**O que mudou:** o `alsoft.conf` passa a valer em **todo** firmware e fixa
-`drivers = pipewire,pulse,alsa` (a ordem provada pelo Bully aprovado em
-PipeWire, Mali-450 e R36S só-ALSA); servidor de som na frente do ALSA cru, e
-ALSA cru sempre com `mmap = false`. O `PULSE_SERVER` também aceita o socket em
-`$XDG_RUNTIME_DIR`. O log agora nomeia a saída que venceu — se algum aparelho
-continuar mudo, é essa linha que diz o motivo. A música também ficou mais
-robusta (`MPG123_NEW_FORMAT` e retentativa do play).
+**Conserto (duas travas):** a janela passa a pedir config **sem alpha** e, como
+o atributo é mínimo e o driver entrega alpha assim mesmo (aqui vem `alpha=8`
+mesmo pedindo 0), todo quadro é forçado **opaco logo antes do present**,
+religando o framebuffer 0 por `glBindFramebufferOES` para o clear nunca cair num
+FBO amarrado (a pegadinha que custou a v1.2.0 do Horizon Chase). O log agora traz
+driver de vídeo, config concedida, renderer/versão do GL e a confirmação de que o
+present opaco rodou. Inclui também o fix de áudio da 1.0.1.
 
-**Comprovação:** instalação limpa deste ZIP em Mali-450/NextOS, extração no
-aparelho e jogo rodando: stream vivo e sem mute no PulseAudio e captura de 3s do
-monitor do sink com pico 8376 / média 1326 — sinal real, não silêncio.
+**Medição (Mali-450, 1280x720):** alpha de **255 em 99,0%** para **255 em 100%**,
+com **RGB byte a byte idêntico** — conserta a opacidade sem tocar em imagem.
+
+**Não reproduzido aqui:** a tela preta exige firmware que honra alpha, e todo
+aparelho da bancada ignora. Se algum continuar preto, manda o `swordigo.log`: as
+linhas `gl:` dizem qual mecanismo é.

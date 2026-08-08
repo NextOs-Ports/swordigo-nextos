@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.2 — 2026-08-08
+
+- Black screen with the game clearly alive (music playing, input answering) on
+  firmwares whose scanout honours per-pixel alpha — the R36S/ArkOS/DarkOS class.
+  The window was created with `SDL_GL_ALPHA_SIZE 8`, so a frame the game leaves
+  at alpha 0 is composited as transparent and reads as black, while Amlogic's
+  OSD ignores alpha and draws the very same build fine.
+- Two belts, because the attribute is a minimum and drivers still hand out an
+  alpha config: the window now asks for no alpha, and every frame is forced
+  opaque immediately before the present, rebinding framebuffer 0 through
+  `glBindFramebufferOES` first so the clear cannot land on a bound FBO — the
+  trap that cost Horizon Chase v1.2.0.
+- Measured on Mali-450 at 1280x720: alpha went from 255 on 99.0% of the frame
+  to 255 on 100%, with the RGB bytes identical before and after, so the clear
+  fixes opacity without touching a pixel of image. The firmware there grants
+  `alpha=8` even when asked for 0, which is exactly why both belts ship.
+- The log now carries what a black-screen report needs: video driver, the
+  config actually granted (`alpha=`, `depth=`), the GL renderer and version,
+  and a one-time line confirming the opaque present ran.
+
 ## 1.0.1 — 2026-08-08
 
 - Sound is back. Release 1.0.0 exported `alsoft.conf` only on firmwares with no

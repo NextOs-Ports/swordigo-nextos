@@ -658,7 +658,15 @@ static int gl_init(void) {
   SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-  SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+  /* No alpha in the window config.  A firmware whose scanout honours per-pixel
+   * alpha (KMSDRM plane in ARGB8888 -- ArkOS/ROCKNIX/DarkOS R36S) shows a frame
+   * the game left at alpha 0 as transparent, which reads as a black screen with
+   * the engine perfectly alive: audio, music and input all running.  Amlogic's
+   * OSD ignores alpha, which is why the same build draws fine here.  Asking for
+   * a config without alpha makes the game's alpha irrelevant to the scanout;
+   * present_opaque_alpha() below covers the firmwares that hand out an alpha
+   * config anyway (these attributes are minimums, not exact matches). */
+  SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
   SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -692,8 +700,59 @@ static int gl_init(void) {
       screen_height = draw_h;
     }
   }
-  debugPrintf("gl: GLES1.1 %dx%d\n", screen_width, screen_height);
+  int got_alpha = -1, got_depth = -1;
+  SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, &got_alpha);
+  SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &got_depth);
+  /* A black-screen report is only actionable with the video driver, the config
+   * the firmware actually granted (alpha above all) and the GL blob in use. */
+  const GLubyte *renderer = glGetString(GL_RENDERER);
+  const GLubyte *version = glGetString(GL_VERSION);
+  debugPrintf("gl: GLES1.1 %dx%d alpha=%d depth=%d driver='%s'\n", screen_width,
+              screen_height, got_alpha, got_depth,
+              SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?");
+  debugPrintf("gl: renderer='%s' version='%s'\n",
+              renderer ? (const char *)renderer : "?",
+              version ? (const char *)version : "?");
   return 0;
+}
+
+/* Force the frame opaque immediately before the present.  GLES1.1 has no core
+ * framebuffer object, but the game may bind one through GL_OES_framebuffer_object
+ * and a clear aimed at a bound FBO would leave the window untouched -- the trap
+ * that cost Horizon Chase v1.2.0 -- so framebuffer 0 is rebound explicitly when
+ * the extension entry point exists.  Runs once per frame and logs once. */
+#ifndef GL_FRAMEBUFFER_OES
+#define GL_FRAMEBUFFER_OES 0x8D40
+#endif
+static void present_opaque_alpha(void) {
+  static void (*bind_framebuffer_oes)(GLenum, GLuint);
+  static int resolved = 0, logged = 0;
+  if (!resolved) {
+    resolved = 1;
+    bind_framebuffer_oes = SDL_GL_GetProcAddress("glBindFramebufferOES");
+  }
+
+  GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+  GLfloat clear_colour[4];
+  glGetFloatv(GL_COLOR_CLEAR_VALUE, clear_colour);
+  if (scissor)
+    glDisable(GL_SCISSOR_TEST);
+  if (bind_framebuffer_oes)
+    bind_framebuffer_oes(GL_FRAMEBUFFER_OES, 0);
+  glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+  glClearColor(clear_colour[0], clear_colour[1], clear_colour[2],
+               clear_colour[3]);
+  if (scissor)
+    glEnable(GL_SCISSOR_TEST);
+
+  if (!logged) {
+    logged = 1;
+    debugPrintf("gl: opaque-alpha present active (fbo rebind=%s)\n",
+                bind_framebuffer_oes ? "yes" : "unavailable");
+  }
 }
 
 static void check_data(void) {
@@ -834,6 +893,7 @@ int main(int argc, char **argv) {
     updateApplication(fake_env, NULL, dt);
     drawApplication(fake_env, NULL);
     cursor_draw_overlay();
+    present_opaque_alpha();
     SDL_GL_SwapWindow(g_win);
   }
 
