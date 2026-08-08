@@ -1,6 +1,7 @@
 .build/
 *.log
-gamedata/
+gamedata/*
+!gamedata/LEIA-ME.txt
 assets/
 res/
 libswordigo.so

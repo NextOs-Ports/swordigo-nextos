@@ -104,9 +104,9 @@ ${ESUDO:-} chmod +x "$BIN" "$GAMEDIR/run.sh" 2>/dev/null || true
 
 [ -x "$BIN" ] || launcher_error 'runtime loader is missing or not executable'
 [ -f "$GAMEDIR/extractor.json" ] &&
-[ -f "$GAMEDIR/nxextract/run-extractor.sh" ] &&
-[ -f "$GAMEDIR/nxextract/nxextract-runtime-env.sh" ] &&
-[ -f "$GAMEDIR/nxextract/nxextract.py" ] ||
+[ -f "$GAMEDIR/run-extractor.sh" ] &&
+[ -f "$GAMEDIR/nxextract-runtime-env.sh" ] &&
+[ -f "$GAMEDIR/nxextract.py" ] ||
   launcher_error 'runtime or NXExtract files are missing'
 
 firmware_libraries=
@@ -154,17 +154,17 @@ if [ "$memory_kib" -gt 0 ] && [ "$memory_kib" -lt 1250000 ]; then
 fi
 
 ${ESUDO:-} chmod +x \
-  "$GAMEDIR/nxextract/run-extractor.sh" \
-  "$GAMEDIR/nxextract/nxextract-runtime-env.sh" \
-  "$GAMEDIR/nxextract/nxextract.py" \
-  "$GAMEDIR/nxextract/nxextract-ui" \
+  "$GAMEDIR/run-extractor.sh" \
+  "$GAMEDIR/nxextract-runtime-env.sh" \
+  "$GAMEDIR/nxextract.py" \
+  "$GAMEDIR/nxextract-ui" \
   2>/dev/null || true
 
 # NXExtract prepares the owner data from the APK in gamedata/ on the first
 # launch and validates it with a fast marker check afterwards.
 NXEXTRACT_GAME_DIR=$GAMEDIR \
 NXEXTRACT_FIRMWARE_LIBRARY_PATH=$firmware_libraries \
-  "$GAMEDIR/nxextract/run-extractor.sh" || {
+  "$GAMEDIR/run-extractor.sh" || {
   status=$?
   launcher_error "game-data preparation failed ($status)"
 }

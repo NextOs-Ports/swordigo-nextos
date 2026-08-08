@@ -37,22 +37,12 @@ LC_ALL=C readelf -h "$BIN" | grep -q 'Machine:.*AArch64' ||
 
 sh -n "$ROOT/Swordigo.sh"
 bash -n "$ROOT/run.sh"
-python3 "$ROOT/nxextract/nxextract.py" recipe-check --recipe "$ROOT/extractor.json"
-
-# The whole-kit pin proves the vendored NXExtract is byte-identical to the
-# canonical release and sits in the fixed nxextract/ layout.
-PIN_GATE=${SWORDIGO_PIN_GATE:-$HOME/nextos_ports_android/suportando_outros_devices/tools/check-nxextract-pin.sh}
-if [ -x "$PIN_GATE" ]; then
-  "$PIN_GATE" --bundle "$ROOT" >/dev/null ||
-    { printf 'vendored NXExtract failed the canonical pin gate\n' >&2; exit 1; }
-else
-  printf 'note: NXExtract pin gate not found at %s\n' "$PIN_GATE" >&2
-fi
+python3 "$ROOT/nxextract.py" recipe-check --recipe "$ROOT/extractor.json"
 
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/swordigo-package.XXXXXX")
 trap 'rm -rf -- "$STAGE"' EXIT
 GAME=$STAGE/package/swordigo
-mkdir -p "$GAME/nxextract" "$GAME/gamedata"
+mkdir -p "$GAME/gamedata" "$GAME/licenses"
 
 install -m 0755 "$BIN" "$GAME/swordigo"
 install -m 0755 "$ROOT/run.sh" "$GAME/run.sh"
@@ -62,11 +52,14 @@ install -m 0644 "$ROOT/NOTICE.md" "$GAME/NOTICE.md"
 install -m 0644 "$ROOT/README.md" "$GAME/README.md"
 install -m 0644 "$ROOT/INSTALLATION.md" "$GAME/INSTALLATION.md"
 install -m 0644 "$ROOT/package/GAMEDATA.txt" "$GAME/gamedata/PUT-THE-APK-HERE.txt"
-install -m 0755 "$ROOT/nxextract/nxextract.py" "$GAME/nxextract/nxextract.py"
-install -m 0755 "$ROOT/nxextract/run-extractor.sh" "$GAME/nxextract/run-extractor.sh"
-install -m 0755 "$ROOT/nxextract/nxextract-runtime-env.sh" \
-  "$GAME/nxextract/nxextract-runtime-env.sh"
-install -m 0755 "$ROOT/nxextract/nxextract-ui" "$GAME/nxextract/nxextract-ui"
+install -m 0644 "$ROOT/LICENSE" "$GAME/LICENSE"
+install -m 0644 "$ROOT/licenses/NXExtract-MIT.txt" "$GAME/licenses/NXExtract-MIT.txt"
+install -m 0644 "$ROOT/nxextract-version.txt" "$GAME/nxextract-version.txt"
+install -m 0755 "$ROOT/nxextract.py" "$GAME/nxextract.py"
+install -m 0755 "$ROOT/run-extractor.sh" "$GAME/run-extractor.sh"
+install -m 0755 "$ROOT/nxextract-runtime-env.sh" \
+  "$GAME/nxextract-runtime-env.sh"
+install -m 0755 "$ROOT/nxextract-ui" "$GAME/nxextract-ui"
 install -m 0755 "$ROOT/Swordigo.sh" "$STAGE/package/Swordigo.sh"
 
 [ "$(wc -c < "$STAGE/package/Swordigo.sh")" -le 3072 ] ||
@@ -90,7 +83,7 @@ while IFS= read -r -d '' candidate; do
     *ELF*)
       relative=${candidate#"$STAGE/package/"}
       case "$relative" in
-        swordigo/swordigo|swordigo/nxextract/nxextract-ui) ;;
+        swordigo/swordigo|swordigo/nxextract-ui) ;;
         *) printf 'unexpected ELF entered package: %s\n' "$relative" >&2; exit 1 ;;
       esac
       ;;

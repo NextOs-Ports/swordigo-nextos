@@ -6,7 +6,7 @@ APK: `com.touchfoo.swordigo` **1.4.12** · Engine: **Caver** (TouchFoo) · GLES1
 
 Status: **PLAYABLE, UNIVERSAL** — one `GLIBC_2.27` loader proven on NextOS (Mali-450)
 and on ArkOS/R36S-class hardware (Mali-G31, 640x480): title, New Game, free roam,
-audio, music, pad and right-stick cursor. Data is BYO through NXExtract 1.2.6.
+audio, music, pad and right-stick cursor. Data is BYO through NXExtract 1.2.4.
 
 ---
 
