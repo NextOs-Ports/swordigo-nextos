@@ -35,9 +35,7 @@ fi
 LC_ALL=C readelf -h "$BIN" | grep -q 'Machine:.*AArch64' ||
   { printf 'loader is not AArch64\n' >&2; exit 1; }
 
-sh -n "$ROOT/Swordigo.sh"
-bash -n "$ROOT/run.sh"
-python3 "$ROOT/nxextract.py" recipe-check --recipe "$ROOT/extractor.json"
+PYTHONDONTWRITEBYTECODE=1 bash "$ROOT/tests/launcher_test.sh"
 
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/swordigo-package.XXXXXX")
 trap 'rm -rf -- "$STAGE"' EXIT
