@@ -132,6 +132,11 @@ copy. They make overlays safe when firmware preserves a launcher from
 v1.0.4-v1.0.7. The current launcher never selects those compatibility names;
 all ELF aliases pass the same AArch64 and low-glibc gates.
 
+The release ZIP is assembled from the explicit `nxrelease.json` allowlist by
+content-pinned NXRelease 0.2.5. Its embedded `swordigo/.nxrelease/` inventory,
+checksum manifest, ELF audit and SBOM make the exact launcher chain,
+dependencies and source pins independently verifiable after packaging.
+
 Failures before the runtime log opens are recorded independently as
 `swordigo-launcher-error.<pid>.log`, including the discovery stage, deployment
 ID and expected bootstrap identity. Once runtime starts, `debug.log` records
@@ -163,9 +168,11 @@ package/build-package.sh      # public BYO-data zip
 
 The cross build runs in a Debian Buster container to hold the glibc ceiling;
 SDL2, OpenAL, mpg123, GLES1 and EGL are linked only against SONAME stubs,
-because the device firmware is what provides them. The packager re-runs the
-launcher test suite and refuses to close the ZIP if the binary asks for more
-than `GLIBC_2.30` or is not AArch64.
+because the device firmware is what provides them. Both the build recipe and
+NXRelease reject `RPATH`/`RUNPATH`; the packager re-runs the launcher tests and
+refuses the ZIP if any Linux ELF is not the declared architecture, dependencies
+or low-glibc profile. Repeating the same manifest build produces identical ZIP
+bytes.
 
 ## Credits and licence
 
@@ -174,7 +181,7 @@ Port code: **GPL-3.0** (see [`LICENSE`](LICENSE)). The bundled NXExtract is MIT
 (same 1.4.12).
 
 **Swordigo** is a work and trademark of **TouchFoo**. This project is not
-affiliated with, sponsored by or endorsed by TouchFoo, and nothing here is
+affiliated with or endorsed by TouchFoo, and nothing here is
 distributed on their behalf — see [`NOTICE.md`](NOTICE.md). Obtain the game
 legally.
 
@@ -302,6 +309,11 @@ versionado. Assim o overlay continua seguro se o firmware preservar launcher
 da v1.0.4-v1.0.7. O launcher atual nunca escolhe esses nomes compatíveis, e os
 três ELFs passam pelos mesmos gates AArch64 e de glibc baixa.
 
+O ZIP é montado da allowlist explícita `nxrelease.json` pelo NXRelease 0.2.5
+fixado por conteúdo. O inventário, manifesto de hashes, auditoria ELF e SBOM
+embutidos em `swordigo/.nxrelease/` permitem verificar depois do empacotamento
+a cadeia de launcher, dependências e pins exatos.
+
 Falhas anteriores à abertura do log do runtime viram
 `swordigo-launcher-error.<pid>.log`, com fase, deployment e identidade esperada
 do bootstrap. Depois da entrada no runtime, o `debug.log` registra deployment,
@@ -331,9 +343,10 @@ package/build-package.sh      # zip público BYO-data
 
 A build cruzada roda num container Debian Buster para manter o teto de glibc;
 SDL2, OpenAL, mpg123, GLES1 e EGL entram só como stubs de SONAME, porque quem
-fornece essas bibliotecas é o firmware. O empacotador roda de novo a suíte de
-testes do launcher e se recusa a fechar o ZIP se o binário pedir mais que
-`GLIBC_2.30` ou não for AArch64.
+fornece essas bibliotecas é o firmware. A receita e o NXRelease rejeitam
+`RPATH`/`RUNPATH`; o empacotador repete os testes do launcher e recusa o ZIP se
+qualquer ELF Linux divergir da arquitetura, dependências ou perfil de glibc
+baixa declarados. Repetir a build do mesmo manifesto produz bytes idênticos.
 
 ### Créditos e licença
 

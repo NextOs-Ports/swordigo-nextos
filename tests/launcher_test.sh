@@ -51,6 +51,27 @@ if grep -q 'run[.]sh' "$ROOT/Swordigo.sh"; then
 fi
 [ ! -e "$ROOT/run.sh" ] || fail 'obsolete run.sh still exists'
 
+LOADER=$ROOT/swordigo-nextos-v108
+if [ -e "$LOADER" ]; then
+  [ -f "$LOADER" ] && [ ! -L "$LOADER" ] && [ -x "$LOADER" ] ||
+    fail 'public loader is linked, irregular or not executable'
+  LC_ALL=C readelf -hW "$LOADER" | grep -q 'Machine:.*AArch64' ||
+    fail 'public loader is not AArch64'
+  if LC_ALL=C readelf -dW "$LOADER" | grep -Eq '(RPATH|RUNPATH)'; then
+    fail 'public loader embeds RPATH/RUNPATH'
+  fi
+  loader_glibc=$(LC_ALL=C readelf --version-info "$LOADER" |
+    grep -oE 'GLIBC_[0-9]+([.][0-9]+)*' | sort -Vu | tail -1)
+  [ -n "$loader_glibc" ] || fail 'public loader has no readable glibc ABI'
+  loader_version=${loader_glibc#GLIBC_}
+  loader_major=${loader_version%%.*}
+  loader_minor=${loader_version#*.}; loader_minor=${loader_minor%%.*}
+  if [ "$loader_major" -gt 2 ] ||
+     { [ "$loader_major" -eq 2 ] && [ "$loader_minor" -gt 30 ]; }; then
+    fail "public loader requires $loader_glibc; ceiling is GLIBC_2.30"
+  fi
+fi
+
 if grep -qE '^[^#]*export[[:space:]]+SDL_(VIDEODRIVER|AUDIODRIVER)=' \
     "$ROOT/Swordigo.sh" "$ROOT/swordigo/nxbootstrap.sh" \
     "$VERSIONED_BOOTSTRAP"; then

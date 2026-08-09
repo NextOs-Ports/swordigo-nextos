@@ -12,6 +12,18 @@ set -euo pipefail
 
 PORT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 OUTPUT=${SWORDIGO_UNIVERSAL_OUTPUT:-swordigo-nextos-v108}
+BUILDER_IMAGE=playfetch-builder:buster
+BUILDER_IMAGE_ID=sha256:036c7910ea53bc78cc213452afa92fa83d55de1c51ae54f315af58b5a41a45cf
+export LC_ALL=C
+export TZ=UTC
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1786233600}
+
+case "$OUTPUT" in
+  ''|.*|*[!A-Za-z0-9._-]*)
+    echo "SWORDIGO_UNIVERSAL_OUTPUT must be a plain safe basename" >&2
+    exit 1
+    ;;
+esac
 
 if [ "${SWORDIGO_BUSTER_IN_CONTAINER:-0}" != "1" ]; then
   NEXTOS_ROOT=${NEXTOS_ROOT:-/mnt/ARQUIVOS/NextOS-Elite-Edition}
@@ -34,42 +46,42 @@ if [ "${SWORDIGO_BUSTER_IN_CONTAINER:-0}" != "1" ]; then
     exit 1
   }
 
-  if [ -n "${SWORDIGO_BUSTER_IMAGE:-}" ]; then
-    BUSTER_IMAGE=$SWORDIGO_BUSTER_IMAGE
-  elif docker image inspect playfetch-builder:buster >/dev/null 2>&1; then
-    BUSTER_IMAGE=playfetch-builder:buster
-  else
-    BUSTER_IMAGE=debian:buster
-  fi
+  ACTUAL_IMAGE_ID=$(docker image inspect "$BUILDER_IMAGE" \
+    --format '{{.Id}}' 2>/dev/null) || {
+      echo "pinned offline builder image is missing: $BUILDER_IMAGE" >&2
+      exit 1
+    }
+  [ "$ACTUAL_IMAGE_ID" = "$BUILDER_IMAGE_ID" ] || {
+    echo "builder image changed: $ACTUAL_IMAGE_ID" >&2
+    exit 1
+  }
 
-  exec docker run --rm \
+  exec docker run --rm --network none \
     -e SWORDIGO_BUSTER_IN_CONTAINER=1 \
     -e SWORDIGO_UNIVERSAL_OUTPUT="$OUTPUT" \
     -e SWORDIGO_HOST_UID="$(id -u)" \
     -e SWORDIGO_HOST_GID="$(id -g)" \
+    -e LC_ALL=C -e TZ=UTC -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
     -v "$PORT_DIR":/repo \
     -v "$NEXTOS_SYSROOT":/nxsr:ro \
-    "$BUSTER_IMAGE" \
+    "$BUILDER_IMAGE_ID" \
     bash /repo/build_universal.sh
-fi
-
-export DEBIAN_FRONTEND=noninteractive
-if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1 || \
-   [ ! -e /usr/lib/aarch64-linux-gnu/libz.so ]; then
-  dpkg --add-architecture arm64
-  printf '%s\n' \
-    'deb [arch=amd64,arm64] http://archive.debian.org/debian buster main' \
-    'deb [arch=amd64,arm64] http://archive.debian.org/debian-security buster/updates main' \
-    > /etc/apt/sources.list
-  apt-get -o Acquire::Check-Valid-Until=false update -qq >/dev/null
-  apt-get install -y -qq --no-install-recommends \
-    gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-    zlib1g-dev:arm64 file >/dev/null
 fi
 
 CC=aarch64-linux-gnu-gcc
 NM=aarch64-linux-gnu-nm
 READELF=aarch64-linux-gnu-readelf
+STRIP=aarch64-linux-gnu-strip
+for tool in "$CC" "$NM" "$READELF" "$STRIP" file strings; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "missing pinned-builder tool: $tool" >&2
+    exit 1
+  }
+done
+[ -e /usr/lib/aarch64-linux-gnu/libz.so ] || {
+  echo "pinned builder is missing the AArch64 zlib development link" >&2
+  exit 1
+}
 cd /repo
 
 OBJDIR=$(mktemp -d)
@@ -90,8 +102,9 @@ OBJS=()
 for source in "${SOURCES[@]}"; do
   object="$OBJDIR/$(basename "${source%.c}").o"
   "$CC" -I src -idirafter /nxsr/usr/include \
-    -D_GNU_SOURCE -O2 -g -fPIC -fno-strict-aliasing -fno-omit-frame-pointer \
-    -Wall -Wextra -Wno-unused-parameter \
+    -D_GNU_SOURCE -O2 -g -fPIE -fno-strict-aliasing -fno-omit-frame-pointer \
+    -ffile-prefix-map=/repo=. -fdebug-prefix-map=/repo=. \
+    -Wall -Wextra -Wno-unused-parameter -Wno-unused-function \
     -c "$source" -o "$object"
   OBJS+=("$object")
 done
@@ -115,9 +128,12 @@ make_stub libGLESv1_CM.so.1    '^gl[A-Z]'               GLESv1_CM
 make_stub libEGL.so.1          '^egl[A-Z]'              EGL
 
 "$CC" -fPIE -pie -rdynamic -o "$OUTPUT" "${OBJS[@]}" \
-  -L"$STUBDIR" -lSDL2 -lopenal -lmpg123 -lGLESv1_CM -lEGL \
+  -L"$STUBDIR" -Wl,--no-as-needed \
+  -lSDL2 -lopenal -lmpg123 -lGLESv1_CM -lEGL -Wl,--as-needed \
   -ldl -lm -lpthread -lz -lgcc_s \
-  -Wl,-rpath,'$ORIGIN'
+  -Wl,--build-id=sha1 -Wl,-z,relro,-z,now,-z,noexecstack
+"$STRIP" --strip-debug "$OUTPUT"
+chmod 0755 "$OUTPUT"
 
 MAX_GLIBC=$(
   "$READELF" --version-info "$OUTPUT" |
@@ -133,6 +149,63 @@ if [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -gt 30 ]; }; then
   exit 1
 fi
 
+MACHINE=$("$READELF" -h "$OUTPUT" |
+  sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p')
+[ "$MACHINE" = AArch64 ] || {
+  echo "unexpected ELF machine: $MACHINE" >&2
+  exit 1
+}
+INTERPRETER=$("$READELF" -lW "$OUTPUT" |
+  sed -n 's/.*Requesting program interpreter: \([^]]*\).*/\1/p')
+[ "$INTERPRETER" = /lib/ld-linux-aarch64.so.1 ] || {
+  echo "unexpected PT_INTERP: $INTERPRETER" >&2
+  exit 1
+}
+if "$READELF" -dW "$OUTPUT" | grep -Eq '(RPATH|RUNPATH)'; then
+  echo "public loader contains RPATH/RUNPATH" >&2
+  exit 1
+fi
+if "$READELF" -lW "$OUTPUT" |
+    awk '$1 == "LOAD" && $0 ~ /RWE/ { bad=1 } END { exit !bad }'; then
+  echo "public loader contains an RWX PT_LOAD" >&2
+  exit 1
+fi
+
+NEEDED=$("$READELF" -dW "$OUTPUT" |
+  awk -F'[][]' '/NEEDED/ {print $2}' | sort)
+EXPECTED=$(printf '%s\n' \
+  libEGL.so.1 libGLESv1_CM.so.1 libSDL2-2.0.so.0 libc.so.6 libdl.so.2 \
+  libgcc_s.so.1 libm.so.6 libmpg123.so.0 libopenal.so.1 libpthread.so.0 \
+  libz.so.1 | sort)
+[ "$NEEDED" = "$EXPECTED" ] || {
+  echo "unexpected DT_NEEDED set:" >&2
+  printf '%s\n' "$NEEDED" >&2
+  exit 1
+}
+
+TLS_MEMSZ=$("$READELF" -lW "$OUTPUT" |
+  awk '$1 == "TLS" { value=$6 } END { print value }')
+PAD_LAYOUT=$("$READELF" -sW "$OUTPUT" |
+  awk '$4 == "TLS" && $8 == "g_bionic_guard_pad" { value=$2 ":" $3 } END { print value }')
+[ "$PAD_LAYOUT" = 0000000000000000:256 ] || {
+  echo "Bionic guard-pad layout changed: $PAD_LAYOUT" >&2
+  exit 1
+}
+[ $((TLS_MEMSZ)) -ge 256 ] || {
+  echo "TLS block is smaller than the Bionic guard pad" >&2
+  exit 1
+}
+
+if strings "$OUTPUT" |
+    grep -Eq '/home/|/mnt/ARQUIVOS/|/repo/|192[.]168[.]'; then
+  echo "public loader contains a private build path or test address" >&2
+  exit 1
+fi
+
 chown "${SWORDIGO_HOST_UID:-0}:${SWORDIGO_HOST_GID:-0}" "$OUTPUT" 2>/dev/null || true
-printf 'universal loader: %s | ABI %s\n' "$OUTPUT" "$MAX_GLIBC"
-"$READELF" -d "$OUTPUT" | grep NEEDED
+printf 'universal loader: %s | ABI %s | interpreter %s\n' \
+  "$OUTPUT" "$MAX_GLIBC" "$INTERPRETER"
+printf 'DT_NEEDED: %s\n' "$(printf '%s\n' "$NEEDED" | tr '\n' ' ')"
+printf 'TLS guard: %s; memsz=%s\n' "$PAD_LAYOUT" "$TLS_MEMSZ"
+file "$OUTPUT"
+sha256sum "$OUTPUT"

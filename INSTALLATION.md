@@ -46,6 +46,10 @@ fails before `debug.log` can open, it writes a fresh
 launcher, and/or in the temporary directory when those locations are writable.
 The static `swordigo/nxdeployment.json` confirms which generated deployment
 was installed; it is not proof that the launcher actually ran.
+The release also contains `swordigo/.nxrelease/NXRELEASE-METADATA.json`,
+`swordigo/.nxrelease/MANIFEST.sha256` and
+`swordigo/.nxrelease/SBOM.cdx.json` so the public ZIP can be reopened and
+verified without trusting the build directory.
 
 ## Português
 
@@ -79,3 +83,6 @@ firmwares que preservem um `Swordigo.sh` anterior durante o overlay.
 Logs: `swordigo/debug.log`, `swordigo/nxextract.log` e, para falha anterior ao
 runtime, `swordigo-launcher-error.<pid>.log`. O `nxdeployment.json` prova que o
 deployment gerado foi instalado, mas não prova sozinho que o launcher rodou.
+O ZIP também leva metadados, manifesto de hashes e SBOM em
+`swordigo/.nxrelease/`, para ser reaberto e verificado sem confiar na árvore
+local da build.

@@ -17,10 +17,13 @@
   `swordigo` aliases remain byte-identical for launchers preserved from
   v1.0.5-v1.0.7 and v1.0.4 respectively. No symlink is used.
 - Hardened the package gates around the complete deployment: both bootstrap
-  names must be byte-identical, all three loader names must be byte-identical,
-  no `run.sh` may exist, and every packaged Linux ELF is independently audited
-  against the `GLIBC_2.30` ceiling. ZIP construction remains deterministic and
-  rejects owner game data and local/private paths.
+  names and all three loader names must be byte-identical, no `run.sh` may
+  exist, and every packaged Linux ELF is independently audited against the
+  `GLIBC_2.30` ceiling with no `RPATH`/`RUNPATH` accepted.
+- Moved release construction to the content-pinned NXRelease 0.2.5 schema-2
+  manifest. The deterministic ZIP now carries its own inventory, source
+  manifest, dependency closure, ELF audit and CycloneDX SBOM, while the
+  allowlist excludes owner game data and local/private paths.
 - Preserved Swordigo's native Android lifecycle order and every existing
   game-specific present, fullscreen, audio and input policy. This candidate has
   host/build/package validation only; physical extraction and gameplay

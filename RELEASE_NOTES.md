@@ -1,13 +1,19 @@
 # Swordigo v1.0.8 release candidate — deployment identity and early diagnostics
 
 Candidate ZIP SHA-256:
-`329289294d00176e937f5854c3214a751e655c191577aa20902f643f20870a3b`
+`23e3c0fb090c2782501bb461043844a4da07574664c15dff30d7de94a082dc48`
 
 Selected loader SHA-256:
-`c1add34c0f815652c21e879d652632dd1e0705cc364088d2b1a59d061e64426c`
+`ce2ddced420845e9956fb6ab0bf29e0177ee91bdfcfc5704eddfc848bfbea500`
 
 nxbootstrap 0.5.1 SHA-256:
 `71bd91ef039feb4ed60aa0a1b26eaddafc1ceef80cdf34051fc6aacd2fdae902`
+
+NXRelease 0.2.5 SHA-256:
+`a41b7bd2bd8c5359d63727fb5a2456f4a0018832ade88effdb0989b0115f430a`
+
+Release input manifest SHA-256:
+`ce23c4ef82c7e2709fc94e2fea9c3800447ac8bf738746d7b77d735e4a00a784`
 
 Deployment ID:
 `d466c521061221d2675d73b2af4f95c4657c9850e333c57734c8ab2be51b687b`
@@ -25,6 +31,9 @@ cannot quietly leave the 1.0.7 payload in place. Regular files named
 `swordigo-nextos` and `swordigo` carry the same bytes for launchers retained
 from v1.0.5-v1.0.7 and v1.0.4. The package verifies all three copies before and
 after ZIP creation and audits every Linux ELF against `GLIBC_2.30`.
+The NXRelease schema-2 inventory rejects `RPATH`/`RUNPATH`, pins the complete
+NXExtract runtime and records the exact dependency closure and SBOM inside
+`swordigo/.nxrelease/`.
 
 The field evidence that motivated this candidate must not be read as a v1.0.8
 test result: the dArkOSRE report showed a hybrid deployment with a new launcher
