@@ -3,7 +3,9 @@
 #
 # Layout is the canonical PortMaster one: one visible generated launcher and
 # the swordigo/ folder at the ZIP root.  The launcher loads nxbootstrap.sh
-# directly; a second-stage run.sh is deliberately forbidden.
+# directly; a second-stage run.sh is deliberately forbidden.  One release
+# migration bridge is included for CFW installers that preserve the v1.0.4
+# launcher's embedded executable name while replacing the payload below it.
 #
 # The package contains NO game data: NXExtract prepares libswordigo.so,
 # assets/ and res/ on the device from an APK the player legally owns, dropped
@@ -53,6 +55,14 @@ GAME=$STAGE/package/swordigo
 mkdir -p "$GAME/gamedata" "$GAME/licenses"
 
 install -m 0755 "$BIN" "$GAME/swordigo-nextos"
+# v1.0.4 embedded NXPORT_EXECUTABLE=swordigo in the visible launcher.  Some
+# overlay installers preserve that old .sh while updating the game directory,
+# creating a mixed install that can never select swordigo-nextos.  Ship an
+# ordinary, byte-identical ELF at the old path for the transition: symlinks are
+# deliberately unsuitable because nxbootstrap rejects linked runtimes and
+# common FAT extractors do not preserve them.  Current launchers never select
+# this compatibility name.
+install -m 0755 "$BIN" "$GAME/swordigo"
 install -m 0644 "$ROOT/swordigo/nxbootstrap.sh" "$GAME/nxbootstrap.sh"
 install -m 0644 "$ROOT/swordigo/nxport.json" "$GAME/nxport.json"
 install -m 0644 "$ROOT/alsoft.conf" "$GAME/alsoft.conf"
@@ -98,8 +108,13 @@ grep -F "NXPORT_REQUIRED_FILES='swordigo-nextos" \
   printf 'obsolete second-stage run.sh entered the package\n' >&2
   exit 1
 }
-[ ! -e "$GAME/swordigo" ] || {
-  printf 'legacy loader name entered the package\n' >&2
+[ -f "$GAME/swordigo" ] && [ ! -L "$GAME/swordigo" ] &&
+  [ -x "$GAME/swordigo" ] || {
+  printf 'v1.0.4 update bridge is missing or unsafe\n' >&2
+  exit 1
+}
+cmp -s "$GAME/swordigo-nextos" "$GAME/swordigo" || {
+  printf 'v1.0.4 update bridge diverges from swordigo-nextos\n' >&2
   exit 1
 }
 
@@ -126,13 +141,15 @@ if grep -IRnE '192[.]168[.]|169[.]254[.]|10[.][0-9]+[.]|/home/|/media/|root@|pas
   exit 1
 fi
 
-# Only these two ELFs may exist: our loader and the extractor UI.
+# Only the runtime, its byte-identical v1.0.4 update bridge and extractor UI
+# may be ELFs.  Every copy is independently checked against the public ABI
+# ceiling below.
 while IFS= read -r -d '' candidate; do
   case "$(file -b "$candidate")" in
     *ELF*)
       relative=${candidate#"$STAGE/package/"}
       case "$relative" in
-        swordigo/swordigo-nextos|swordigo/nxextract/nxextract-ui) ;;
+        swordigo/swordigo-nextos|swordigo/swordigo|swordigo/nxextract/nxextract-ui) ;;
         *) printf 'unexpected ELF entered package: %s\n' "$relative" >&2; exit 1 ;;
       esac
       newest=$(readelf --version-info "$candidate" 2>/dev/null |
@@ -170,6 +187,12 @@ mv -f -- "$TEMP_ZIP" "$OUTPUT"
 HASH=$(sha256sum "$OUTPUT" | awk '{print $1}')
 printf '%s  %s\n' "$HASH" "$(basename "$OUTPUT")" > "$OUTPUT.sha256"
 unzip -tq "$OUTPUT" >/dev/null
+unzip -p "$OUTPUT" swordigo/swordigo-nextos > "$STAGE/zip-primary"
+unzip -p "$OUTPUT" swordigo/swordigo > "$STAGE/zip-bridge"
+cmp -s "$STAGE/zip-primary" "$STAGE/zip-bridge" || {
+  printf 'ZIP changed the v1.0.4 update bridge\n' >&2
+  exit 1
+}
 
 printf 'PACKAGE OK: %s\n' "$OUTPUT"
 printf 'SHA-256: %s\n' "$HASH"

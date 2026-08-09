@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.7 — 2026-08-09
+
+- Made overlay updates from 1.0.4 deterministic. Field evidence showed a mixed
+  install whose visible launcher still embedded `executable=swordigo`, while
+  1.0.5 and later use `swordigo-nextos`. The ZIP now carries a regular,
+  byte-identical AArch64 compatibility copy at the legacy path, so even a CFW
+  that preserves the old launcher executes the current runtime. The canonical
+  launcher and public executable name remain `swordigo-nextos`.
+- Added package gates that require both runtime paths to be byte-identical,
+  independently audit every packaged ELF against `GLIBC_2.30`, and verify the
+  equality again from the completed ZIP. No game data is included or changed.
+- Retained the 1.0.6 bootstrap stderr fix, covering the muOS 1.0.5 report that
+  returned without a durable runtime log. Graphics, audio, controls, native
+  lifecycle and owner-data extraction are otherwise unchanged.
+
 ## 1.0.6 — 2026-08-09
 
 - Fixed the universal bootstrap's file-descriptor probes so their local error

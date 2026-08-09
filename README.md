@@ -40,6 +40,11 @@ A successful install creates `libswordigo.so`, `assets/` and `res/` inside
 `ports/swordigo/`. Full steps, including the per-firmware card paths, in
 [`INSTALLATION.md`](INSTALLATION.md).
 
+Updating from 1.0.4 is safe as an overlay and preserves extracted data and
+saves. Version 1.0.7 includes a byte-identical compatibility copy for firmware
+installers that retain the old launcher's embedded `swordigo` name; every
+current launcher still selects `swordigo-nextos`.
+
 Firmware note: on **NextOS / EmuELEC** EmulationStation lists launchers from
 `roms/ports_scripts/`, so `Swordigo.sh` also goes there while the game folder
 stays at `roms/ports/swordigo/`. On **muOS** the card path is
@@ -113,6 +118,12 @@ The public package has one launcher chain only:
 second-stage `run.sh`. NXExtract 1.2.6 runs as an isolated foreground phase;
 the game-specific OpenAL policy stays in the loader adapter rather than in the
 generic bootstrap.
+
+Version 1.0.7 also packages a byte-identical `swordigo` compatibility copy for
+one-way updates from 1.0.4 installations whose firmware preserves the visible
+launcher. It is never selected by the current launcher, is not a second stage,
+and is subjected to the same AArch64 and low-glibc gates as the canonical
+runtime.
 
 Before SDL opens the display, the bootstrap also checks PortMaster's own live
 dialog pipe. If a firmware-specific platform helper returned without closing
@@ -262,6 +273,11 @@ O pacote público tem uma única cadeia de lançamento:
 `run.sh` intermediário. O NXExtract 1.2.6 roda como fase isolada em foreground;
 a política OpenAL específica do jogo fica no adapter do loader, não no
 bootstrap genérico.
+
+A v1.0.7 também inclui uma cópia `swordigo` byte a byte idêntica para atualizar
+instalações 1.0.4 em que o firmware preserva o launcher visível. O launcher
+atual nunca escolhe essa ponte, que passa pelos mesmos gates AArch64 e de glibc
+baixa do runtime canônico.
 
 Antes de a SDL abrir o display, o bootstrap também verifica o pipe vivo do
 próprio diálogo do PortMaster. Se um helper específico do firmware retornou sem
