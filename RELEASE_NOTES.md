@@ -1,3 +1,24 @@
+# Swordigo v1.0.4 — one launcher, one durable log
+
+The public ZIP now follows the universal PortMaster framework literally:
+`Swordigo.sh` loads `swordigo/nxbootstrap.sh` and launches the loader. The
+obsolete intermediate `run.sh` is gone. NXExtract is updated to 1.2.6, and the
+OpenAL/Pulse setup proven by v1.0.1 lives in Swordigo's C adapter so the generic
+bootstrap remains backend-neutral. Launcher and loader output now share
+`swordigo/debug.log`; extraction keeps its independent `nxextract.log`.
+
+This is a packaging/pre-main correction. The native game order, GLES1 opaque
+present, fullscreen-desktop policy, audio backend order, controls and exit path
+from v1.0.3 are preserved.
+
+The exact public ZIP (`8f2934deb8d258a895db55db317d04f847db570cd7a5f78ffac88a7c939cbb89`)
+was accepted on NextOS/Mali-450: NXExtract 1.2.6 fast validation, GLES1 at
+1280×720, OpenAL at 48 kHz, a real non-black frame, TERM exit status 0,
+PortMaster finish and no remaining process. The sanitized receipt is
+[`references/v1.0.4-nextos-acceptance.json`](references/v1.0.4-nextos-acceptance.json).
+
+---
+
 # Swordigo v1.0.3 — black screen: the modeset, and the log that decides
 
 Field testing came back with the game **running but the screen black**: music

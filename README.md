@@ -23,7 +23,7 @@ device drew.*
 Questions, device reports and bug reports: <https://discord.gg/DHfY62eDNN>
 
 A useful report has the device model, the firmware and its version, plus the
-`swordigo.log` and `nxextract.log` that sit next to the port.
+`debug.log` and `nxextract.log` that sit next to the port.
 
 ## Install
 
@@ -108,6 +108,12 @@ in-binary unwinder can see the `PT_GNU_EH_FRAME` of the mmap'd module, and the
 stack canary is anchored in a thread-local pad because the game reads it from
 the Bionic TLS slot. `STUDY.md` has the full reverse-engineering notes.
 
+The public package has one launcher chain only:
+`Swordigo.sh → swordigo/nxbootstrap.sh → swordigo/swordigo`. There is no
+second-stage `run.sh`. NXExtract 1.2.6 runs as an isolated foreground phase;
+the game-specific OpenAL policy stays in the loader adapter rather than in the
+generic bootstrap.
+
 ## Build
 
 ```sh
@@ -152,7 +158,7 @@ instalador valida e publica os dados no aparelho.
 Dúvidas, relatos de aparelho e bugs: <https://discord.gg/DHfY62eDNN>
 
 Relato útil traz o modelo do aparelho, o firmware e a versão, mais o
-`swordigo.log` e o `nxextract.log` que ficam ao lado do port.
+`debug.log` e o `nxextract.log` que ficam ao lado do port.
 
 ### Instalar
 
@@ -236,6 +242,12 @@ pela SDL2. Exceções C++ exigem um `dl_iterate_phdr` custom para o unwinder
 embutido enxergar o `PT_GNU_EH_FRAME` do módulo mmapado, e o canário de pilha
 fica ancorado num pad thread-local porque o jogo o lê do slot TLS do bionic.
 As notas completas de engenharia reversa estão em `STUDY.md`.
+
+O pacote público tem uma única cadeia de lançamento:
+`Swordigo.sh → swordigo/nxbootstrap.sh → swordigo/swordigo`. Não existe
+`run.sh` intermediário. O NXExtract 1.2.6 roda como fase isolada em foreground;
+a política OpenAL específica do jogo fica no adapter do loader, não no
+bootstrap genérico.
 
 ### Construir
 

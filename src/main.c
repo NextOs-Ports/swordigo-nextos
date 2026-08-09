@@ -47,6 +47,73 @@ static SDL_Window *g_win;
 static SDL_GLContext g_ctx;
 static volatile int g_running = 1;
 static double g_time;
+static int debug_control_enabled;
+
+static int socket_path_exists(const char *path) {
+  struct stat st;
+  return path && path[0] == '/' && lstat(path, &st) == 0 && S_ISSOCK(st.st_mode);
+}
+
+static void set_default_environment(const char *name, const char *value) {
+  const char *current = getenv(name);
+  if (value && *value) {
+    if (!current)
+      (void)setenv(name, value, 0);
+    else if (!*current)
+      (void)setenv(name, value, 1);
+  }
+}
+
+/* Everything the old second-stage run.sh contributed to the game process now
+ * belongs to the adapter.  nxbootstrap remains generic and never selects an
+ * SDL/OpenAL backend; this code only points OpenAL Soft at the shipped policy
+ * and exposes a Pulse socket that the current firmware actually owns. */
+static void configure_runtime_environment(void) {
+  char path[sizeof(data_path) + 64];
+  char pulse_server[sizeof(data_path) + 64];
+  const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
+  const char *pulse_candidates[4] = {
+      "/run/pulse/native", "/var/run/pulse/native", NULL, NULL};
+
+  if (snprintf(path, sizeof(path), "%s/alsoft.conf", data_path) > 0) {
+    struct stat st;
+    if (lstat(path, &st) == 0 && S_ISREG(st.st_mode))
+      set_default_environment("ALSOFT_CONF", path);
+  }
+
+  if (xdg_runtime && *xdg_runtime &&
+      snprintf(path, sizeof(path), "%s/pulse/native", xdg_runtime) > 0)
+    pulse_candidates[2] = path;
+  if (!getenv("PULSE_SERVER") || !*getenv("PULSE_SERVER")) {
+    for (size_t i = 0; pulse_candidates[i]; ++i) {
+      if (!socket_path_exists(pulse_candidates[i]))
+        continue;
+      if (snprintf(pulse_server, sizeof(pulse_server), "unix:%s",
+                   pulse_candidates[i]) > 0)
+        set_default_environment("PULSE_SERVER", pulse_server);
+      break;
+    }
+  }
+
+  set_default_environment("SDL_GAMECONTROLLER_USE_BUTTON_LABELS", "0");
+  set_default_environment("SDL_VIDEO_FULLSCREEN_DESKTOP", "1");
+
+  FILE *meminfo = fopen("/proc/meminfo", "r");
+  unsigned long memory_kib = 0;
+  if (meminfo) {
+    char line[160];
+    while (fgets(line, sizeof(line), meminfo)) {
+      if (sscanf(line, "MemTotal: %lu kB", &memory_kib) == 1)
+        break;
+    }
+    fclose(meminfo);
+  }
+  if (memory_kib > 0 && memory_kib < 1250000UL) {
+    set_default_environment("MALLOC_ARENA_MAX", "2");
+    set_default_environment("MALLOC_TRIM_THRESHOLD_", "131072");
+    set_default_environment("MALLOC_MMAP_THRESHOLD_", "65536");
+  }
+}
 
 /* ---- overlay hide (pad used) — same symbols/offsets as swordigo_nx 1.4.12 ---- */
 #define GAME_OVERLAY_INIT_SYMBOL \
@@ -824,7 +891,8 @@ int main(int argc, char **argv) {
   if (!getcwd(data_path, sizeof(data_path)))
     snprintf(data_path, sizeof(data_path), ".");
 
-  unlink("debug.log");
+  configure_runtime_environment();
+  debug_control_enabled = getenv("SWORDIGO_DEBUG_CONTROL") != NULL;
   debugPrintf("=== swordigo NextOS — data=%s ===\n", data_path);
   check_data();
 
@@ -903,7 +971,7 @@ int main(int argc, char **argv) {
       emit_touch(TOUCH_ENDED, 8, ctl_x, ctl_y);
       ctl_up_frame = -1;
     }
-    if ((frame % 5) == 0) {
+    if (debug_control_enabled && (frame % 5) == 0) {
       FILE *cf = fopen("/dev/shm/swordigo_ctl", "r");
       if (cf) {
         char cmd[16] = {0};

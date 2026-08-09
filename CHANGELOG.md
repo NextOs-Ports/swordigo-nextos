@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.4 — 2026-08-09
+
+- Migrated the public package to the universal generated launcher contract:
+  `Swordigo.sh` loads `swordigo/nxbootstrap.sh` directly and the obsolete
+  second-stage `run.sh` no longer exists in source or ZIP.
+- Upgraded the owner-data phase from NXExtract 1.2.4 to the canonical 1.2.6
+  runtime, kept isolated from the game-private library path.
+- Moved Swordigo's proven OpenAL policy and Pulse socket discovery into the
+  game adapter. The generic bootstrap still never selects an SDL or audio
+  backend.
+- Consolidated launcher and loader output in the durable `debug.log`; the
+  loader no longer unlinks or races a second log file.
+- The development control socket is now disabled unless
+  `SWORDIGO_DEBUG_CONTROL=1` is explicitly set.
+
 ## 1.0.3 — 2026-08-08
 
 - The window is created with `SDL_WINDOW_FULLSCREEN_DESKTOP` instead of

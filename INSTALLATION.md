@@ -32,7 +32,7 @@
 
 4. A successful install creates `libswordigo.so`, `assets/` and `res/`.
 
-Logs: `swordigo/swordigo.log` and `swordigo/nxextract.log`. If the launcher
+Logs: `swordigo/debug.log` and `swordigo/nxextract.log`. If the launcher
 cannot find the game folder it writes `swordigo-launcher-error.log` next to the
 `.sh` and prints the reason on screen instead of returning silently.
 
@@ -56,3 +56,5 @@ cannot find the game folder it writes `swordigo-launcher-error.log` next to the
 3. Abra **Swordigo** pelo frontend e deixe o NXExtract terminar uma vez.
 
 4. O sucesso cria `libswordigo.so`, `assets/` e `res/`.
+
+Logs: `swordigo/debug.log` e `swordigo/nxextract.log`.
