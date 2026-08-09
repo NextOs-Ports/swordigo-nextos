@@ -23,7 +23,8 @@ device drew.*
 Questions, device reports and bug reports: <https://discord.gg/DHfY62eDNN>
 
 A useful report has the device model, the firmware and its version, plus the
-`debug.log` and `nxextract.log` that sit next to the port.
+`debug.log` and `nxextract.log` that sit next to the port. If runtime logging
+never opened, also send the newest `swordigo-launcher-error.<pid>.log`.
 
 ## Install
 
@@ -40,10 +41,10 @@ A successful install creates `libswordigo.so`, `assets/` and `res/` inside
 `ports/swordigo/`. Full steps, including the per-firmware card paths, in
 [`INSTALLATION.md`](INSTALLATION.md).
 
-Updating from 1.0.4 is safe as an overlay and preserves extracted data and
-saves. Version 1.0.7 includes a byte-identical compatibility copy for firmware
-installers that retain the old launcher's embedded `swordigo` name; every
-current launcher still selects `swordigo-nextos`.
+Updating from an earlier release is safe as an overlay and preserves extracted
+data and saves. Version 1.0.8 selects a new `swordigo-nextos-v108` payload and
+the pinned `nxbootstrap-0.5.1.sh`; byte-identical regular compatibility copies
+cover launchers retained from v1.0.4-v1.0.7.
 
 Firmware note: on **NextOS / EmuELEC** EmulationStation lists launchers from
 `roms/ports_scripts/`, so `Swordigo.sh` also goes there while the game folder
@@ -100,6 +101,10 @@ Evidence level, never a promise:
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **physically validated** |
 | Other AArch64 CFW with SDL2, OpenAL and GLES 1.1 | plausible, **not tested** |
 
+Those rows describe prior accepted releases. The v1.0.8 candidate itself has
+host/build/package validation only; its clean install, extraction and gameplay
+matrix still requires physical runs.
+
 The public executable is audited at a maximum requirement of `GLIBC_2.27` and
 needs only `libSDL2`, `libGLESv1_CM`, `libEGL`, `libopenal`, `libmpg123`, `libz`
 and the firmware's libc. No SDL video or audio backend is ever forced.
@@ -114,24 +119,34 @@ stack canary is anchored in a thread-local pad because the game reads it from
 the Bionic TLS slot. `STUDY.md` has the full reverse-engineering notes.
 
 The public package has one launcher chain only:
-`Swordigo.sh → swordigo/nxbootstrap.sh → swordigo/swordigo-nextos`. There is no
-second-stage `run.sh`. NXExtract 1.2.6 runs as an isolated foreground phase;
-the game-specific OpenAL policy stays in the loader adapter rather than in the
-generic bootstrap.
+`Swordigo.sh → swordigo/nxbootstrap-0.5.1.sh →
+swordigo/swordigo-nextos-v108`. There is no second-stage `run.sh`. The launcher
+pins the versioned bootstrap by version, SHA-256 and the static
+`nxdeployment.json` receipt. NXExtract 1.2.6 runs as an isolated foreground
+phase; the game-specific OpenAL policy stays in the loader adapter rather than
+in the generic bootstrap.
 
-Version 1.0.7 also packages a byte-identical `swordigo` compatibility copy for
-one-way updates from 1.0.4 installations whose firmware preserves the visible
-launcher. It is never selected by the current launcher, is not a second stage,
-and is subjected to the same AArch64 and low-glibc gates as the canonical
-runtime.
+Version 1.0.8 also packages byte-identical regular `swordigo-nextos` and
+`swordigo` runtime aliases plus a byte-identical `nxbootstrap.sh` compatibility
+copy. They make overlays safe when firmware preserves a launcher from
+v1.0.4-v1.0.7. The current launcher never selects those compatibility names;
+all ELF aliases pass the same AArch64 and low-glibc gates.
 
-Before SDL opens the display, the bootstrap also checks PortMaster's own live
-dialog pipe. If a firmware-specific platform helper returned without closing
-that dialog, the bootstrap closes that exact dialog through PortMaster's
-official function. It never guesses a firmware name and never kills an
-unrelated process. On KMSDRM, the adapter drains the GLES queue before swap;
-the opaque-backbuffer operation preserves and restores the game's framebuffer,
-colour mask, clear colour and scissor state exactly.
+Failures before the runtime log opens are recorded independently as
+`swordigo-launcher-error.<pid>.log`, including the discovery stage, deployment
+ID and expected bootstrap identity. Once runtime starts, `debug.log` records
+the deployment, resolved bootstrap and explicit lifecycle phases. A receipt
+without a new log means only that deployment files exist; it cannot prove that
+the frontend invoked the launcher or that a writable log destination survived.
+
+Before SDL opens the display, required PortMaster integration fails closed if
+its control layer cannot initialize. An active `PM_PIPE` is trusted only when
+it is a live, non-symlink FIFO; the official close API must remove that exact
+dialog or launch stops with a diagnostic. The bootstrap never guesses a
+firmware name and never kills an unrelated process. On KMSDRM, the adapter
+drains the GLES queue before swap; the opaque-backbuffer operation preserves
+and restores the game's framebuffer, colour mask, clear colour and scissor
+state exactly.
 
 The sanitized v1.0.5 acceptance receipt is in the
 [`references/v1.0.5-multi-device-acceptance.json`](https://github.com/NextOs-Ports/swordigo-nextos/blob/v1.0.5/references/v1.0.5-multi-device-acceptance.json)
@@ -142,7 +157,7 @@ confirmation on the original dArkOSRE report remains pending.
 ## Build
 
 ```sh
-./build_universal.sh          # -> swordigo-nextos
+./build_universal.sh          # -> swordigo-nextos-v108
 package/build-package.sh      # public BYO-data zip
 ```
 
@@ -183,7 +198,8 @@ instalador valida e publica os dados no aparelho.
 Dúvidas, relatos de aparelho e bugs: <https://discord.gg/DHfY62eDNN>
 
 Relato útil traz o modelo do aparelho, o firmware e a versão, mais o
-`debug.log` e o `nxextract.log` que ficam ao lado do port.
+`debug.log` e o `nxextract.log` que ficam ao lado do port. Se o log do runtime
+nem abriu, envie também o `swordigo-launcher-error.<pid>.log` mais novo.
 
 ### Instalar
 
@@ -255,6 +271,10 @@ Nível de evidência, nunca promessa:
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **validado fisicamente** |
 | Outros CFW AArch64 com SDL2, OpenAL e GLES 1.1 | plausível, **não testado** |
 
+Essas linhas registram releases aceitas anteriormente. A candidata v1.0.8 tem
+por enquanto somente validação de host/build/pacote; instalação limpa,
+extração e gameplay ainda exigem testes físicos.
+
 O executável público é auditado com teto de `GLIBC_2.27` e depende apenas de
 `libSDL2`, `libGLESv1_CM`, `libEGL`, `libopenal`, `libmpg123`, `libz` e a libc
 do firmware. Nenhum backend SDL de vídeo ou áudio é forçado.
@@ -269,23 +289,33 @@ fica ancorado num pad thread-local porque o jogo o lê do slot TLS do bionic.
 As notas completas de engenharia reversa estão em `STUDY.md`.
 
 O pacote público tem uma única cadeia de lançamento:
-`Swordigo.sh → swordigo/nxbootstrap.sh → swordigo/swordigo-nextos`. Não existe
-`run.sh` intermediário. O NXExtract 1.2.6 roda como fase isolada em foreground;
-a política OpenAL específica do jogo fica no adapter do loader, não no
-bootstrap genérico.
+`Swordigo.sh → swordigo/nxbootstrap-0.5.1.sh →
+swordigo/swordigo-nextos-v108`. Não existe `run.sh` intermediário. O launcher
+fixa o bootstrap versionado por versão, SHA-256 e pelo receipt estático
+`nxdeployment.json`. O NXExtract 1.2.6 roda como fase isolada em foreground; a
+política OpenAL específica do jogo fica no adapter do loader, não no bootstrap
+genérico.
 
-A v1.0.7 também inclui uma cópia `swordigo` byte a byte idêntica para atualizar
-instalações 1.0.4 em que o firmware preserva o launcher visível. O launcher
-atual nunca escolhe essa ponte, que passa pelos mesmos gates AArch64 e de glibc
-baixa do runtime canônico.
+A v1.0.8 também inclui aliases regulares `swordigo-nextos` e `swordigo` byte a
+byte idênticos, além da cópia compatível `nxbootstrap.sh`, idêntica ao bootstrap
+versionado. Assim o overlay continua seguro se o firmware preservar launcher
+da v1.0.4-v1.0.7. O launcher atual nunca escolhe esses nomes compatíveis, e os
+três ELFs passam pelos mesmos gates AArch64 e de glibc baixa.
 
-Antes de a SDL abrir o display, o bootstrap também verifica o pipe vivo do
-próprio diálogo do PortMaster. Se um helper específico do firmware retornou sem
-fechar esse diálogo, o bootstrap fecha apenas aquele diálogo pela função oficial
-do PortMaster. Não escolhe correção pelo nome do firmware nem mata processo
-alheio. No KMSDRM, o adapter drena a fila GLES antes do swap; a correção de alpha
-preserva e restaura exatamente framebuffer, máscara de cor, clear color e
-scissor do jogo.
+Falhas anteriores à abertura do log do runtime viram
+`swordigo-launcher-error.<pid>.log`, com fase, deployment e identidade esperada
+do bootstrap. Depois da entrada no runtime, o `debug.log` registra deployment,
+bootstrap resolvido e fases explícitas. Receipt presente sem log novo mostra
+somente que os arquivos do deployment existem; não prova que o frontend chamou
+o launcher nem que algum destino de log continuou gravável.
+
+Antes de a SDL abrir o display, a integração obrigatória do PortMaster falha de
+forma fechada se a camada de controle não inicializar. Um `PM_PIPE` ativo só é
+aceito como FIFO vivo e não-symlink; a API oficial precisa remover exatamente
+aquele diálogo ou o lançamento para com diagnóstico. O bootstrap não escolhe
+correção pelo nome do firmware nem mata processo alheio. No KMSDRM, o adapter
+drena a fila GLES antes do swap; a correção de alpha preserva e restaura
+exatamente framebuffer, máscara de cor, clear color e scissor do jogo.
 
 O recibo sanitizado da v1.0.5 está no registro-fonte
 [`references/v1.0.5-multi-device-acceptance.json`](https://github.com/NextOs-Ports/swordigo-nextos/blob/v1.0.5/references/v1.0.5-multi-device-acceptance.json).
@@ -295,7 +325,7 @@ confirmação no aparelho dArkOSRE do relato original continua pendente.
 ### Construir
 
 ```sh
-./build_universal.sh          # -> swordigo-nextos
+./build_universal.sh          # -> swordigo-nextos-v108
 package/build-package.sh      # zip público BYO-data
 ```
 

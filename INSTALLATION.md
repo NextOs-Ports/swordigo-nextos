@@ -32,16 +32,20 @@
 
 4. A successful install creates `libswordigo.so`, `assets/` and `res/`.
 
-### Updating from 1.0.4
+### Updating an existing installation
 
-Extract v1.0.7 over the existing installation. You do **not** need to remove
-the APK, `assets/`, `res/`, `libswordigo.so` or saves. A compatibility copy in
-this release handles firmware installers that keep the old `Swordigo.sh`
-instead of replacing it; the current launcher still uses `swordigo-nextos`.
+Extract v1.0.8 over the existing installation. You do **not** need to remove
+the APK, `assets/`, `res/`, `libswordigo.so` or saves. The new launcher selects
+`swordigo-nextos-v108` and `nxbootstrap-0.5.1.sh`. Regular, byte-identical
+copies named `swordigo-nextos`, `swordigo` and `nxbootstrap.sh` safely cover
+firmware installers that preserve an older `Swordigo.sh` during the overlay.
 
 Logs: `swordigo/debug.log` and `swordigo/nxextract.log`. If the launcher
-cannot find the game folder it writes `swordigo-launcher-error.log` next to the
-`.sh` and prints the reason on screen instead of returning silently.
+fails before `debug.log` can open, it writes a fresh
+`swordigo-launcher-error.<pid>.log` next to the `.sh`, next to the resolved
+launcher, and/or in the temporary directory when those locations are writable.
+The static `swordigo/nxdeployment.json` confirms which generated deployment
+was installed; it is not proof that the launcher actually ran.
 
 ## Português
 
@@ -64,11 +68,14 @@ cannot find the game folder it writes `swordigo-launcher-error.log` next to the
 
 4. O sucesso cria `libswordigo.so`, `assets/` e `res/`.
 
-### Atualização da 1.0.4
+### Atualizar uma instalação existente
 
-Extraia a v1.0.7 por cima da instalação existente. Não apague o APK,
-`assets/`, `res/`, `libswordigo.so` nem os saves. Esta release contém uma cópia
-de compatibilidade para firmwares que preservam o `Swordigo.sh` antigo; o
-launcher atual continua usando `swordigo-nextos`.
+Extraia a v1.0.8 por cima da instalação existente. Não apague o APK,
+`assets/`, `res/`, `libswordigo.so` nem os saves. O launcher novo escolhe
+`swordigo-nextos-v108` e `nxbootstrap-0.5.1.sh`; as cópias regulares e
+byte-idênticas `swordigo-nextos`, `swordigo` e `nxbootstrap.sh` atendem
+firmwares que preservem um `Swordigo.sh` anterior durante o overlay.
 
-Logs: `swordigo/debug.log` e `swordigo/nxextract.log`.
+Logs: `swordigo/debug.log`, `swordigo/nxextract.log` e, para falha anterior ao
+runtime, `swordigo-launcher-error.<pid>.log`. O `nxdeployment.json` prova que o
+deployment gerado foi instalado, mas não prova sozinho que o launcher rodou.

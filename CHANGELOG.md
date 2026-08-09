@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.8 — 2026-08-09 (release candidate)
+
+- Applied the generated nxbootstrap 0.5.1 deployment contract. The visible
+  launcher now pins `nxbootstrap-0.5.1.sh` by version, SHA-256 and a static
+  `nxdeployment.json` receipt; the non-versioned `nxbootstrap.sh` remains a
+  regular, byte-identical compatibility copy and is never a fallback for the
+  new launcher. Early failures before `debug.log` now create per-attempt
+  `swordigo-launcher-error.<pid>.log` diagnostics, and runtime logs identify
+  the deployment, selected bootstrap and lifecycle phase.
+- Kept `host.portmaster` fail-closed: missing or failed PortMaster integration
+  stops before the game, and an active `PM_PIPE` is accepted only as a live,
+  non-symlink FIFO that the official close API actually removes.
+- Moved the selected public runtime to `swordigo-nextos-v108` so an overlay
+  cannot silently retain the 1.0.7 payload. Regular `swordigo-nextos` and
+  `swordigo` aliases remain byte-identical for launchers preserved from
+  v1.0.5-v1.0.7 and v1.0.4 respectively. No symlink is used.
+- Hardened the package gates around the complete deployment: both bootstrap
+  names must be byte-identical, all three loader names must be byte-identical,
+  no `run.sh` may exist, and every packaged Linux ELF is independently audited
+  against the `GLIBC_2.30` ceiling. ZIP construction remains deterministic and
+  rejects owner game data and local/private paths.
+- Preserved Swordigo's native Android lifecycle order and every existing
+  game-specific present, fullscreen, audio and input policy. This candidate has
+  host/build/package validation only; physical extraction and gameplay
+  validation of v1.0.8 remains pending.
+
 ## 1.0.7 — 2026-08-09
 
 - Made overlay updates from 1.0.4 deterministic. Field evidence showed a mixed

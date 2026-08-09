@@ -2,10 +2,10 @@
 # Build the Swordigo universal BYO-data package.
 #
 # Layout is the canonical PortMaster one: one visible generated launcher and
-# the swordigo/ folder at the ZIP root.  The launcher loads nxbootstrap.sh
-# directly; a second-stage run.sh is deliberately forbidden.  One release
-# migration bridge is included for CFW installers that preserve the v1.0.4
-# launcher's embedded executable name while replacing the payload below it.
+# the swordigo/ folder at the ZIP root.  The launcher pins the versioned
+# nxbootstrap library and deployment receipt directly; a second-stage run.sh
+# is deliberately forbidden.  Regular, byte-identical compatibility copies
+# cover CFW installers that preserve a pre-1.0.8 launcher during an overlay.
 #
 # The package contains NO game data: NXExtract prepares libswordigo.so,
 # assets/ and res/ on the device from an APK the player legally owns, dropped
@@ -18,14 +18,37 @@ case "$VERSION" in
   ''|*[!0-9A-Za-z._-]*) printf 'invalid version.txt\n' >&2; exit 1 ;;
 esac
 
+for tool in file find grep python3 readelf sha256sum sort unzip zip; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    printf 'required packaging tool is missing: %s\n' "$tool" >&2
+    exit 1
+  }
+done
+
 if [ "${SWORDIGO_SKIP_BUILD:-0}" != 1 ]; then
   "$ROOT/build_universal.sh"
 fi
-BIN=$ROOT/swordigo-nextos
-[ -x "$BIN" ] || { printf 'swordigo-nextos is missing\n' >&2; exit 1; }
+BIN=$ROOT/swordigo-nextos-v108
+[ -x "$BIN" ] || { printf 'swordigo-nextos-v108 is missing\n' >&2; exit 1; }
+BOOTSTRAP_VERSION=0.5.1
+VERSIONED_BOOTSTRAP=$ROOT/swordigo/nxbootstrap-$BOOTSTRAP_VERSION.sh
+[ -f "$VERSIONED_BOOTSTRAP" ] && [ ! -L "$VERSIONED_BOOTSTRAP" ] || {
+  printf 'versioned nxbootstrap %s is missing or unsafe\n' \
+    "$BOOTSTRAP_VERSION" >&2
+  exit 1
+}
+[ -f "$ROOT/swordigo/nxdeployment.json" ] &&
+  [ ! -L "$ROOT/swordigo/nxdeployment.json" ] || {
+  printf 'nxdeployment receipt is missing or unsafe\n' >&2
+  exit 1
+}
 
-MAX_GLIBC=$(readelf --version-info "$BIN" |
-  grep -oE 'GLIBC_[0-9]+([.][0-9]+)*' | sort -Vu | tail -1)
+MAX_GLIBC=$(readelf --version-info "$BIN" 2>/dev/null |
+  grep -oE 'GLIBC_[0-9]+([.][0-9]+)*' | sort -Vu | tail -1 || true)
+[ -n "$MAX_GLIBC" ] || {
+  printf 'could not determine loader glibc requirement\n' >&2
+  exit 1
+}
 version_number=${MAX_GLIBC#GLIBC_}
 major=${version_number%%.*}
 minor=${version_number#*.}; minor=${minor%%.*}
@@ -54,17 +77,21 @@ trap 'rm -rf -- "$STAGE"' EXIT
 GAME=$STAGE/package/swordigo
 mkdir -p "$GAME/gamedata" "$GAME/licenses"
 
+install -m 0755 "$BIN" "$GAME/swordigo-nextos-v108"
+# Launchers from v1.0.5-v1.0.7 embedded swordigo-nextos; v1.0.4 embedded
+# swordigo.  Ship ordinary, byte-identical ELFs at both old paths so a CFW that
+# preserves either visible launcher cannot combine old launcher bytes with an
+# old runtime. Symlinks are unsuitable because nxbootstrap rejects linked
+# runtimes and common FAT extractors do not preserve them. The v1.0.8 launcher
+# selects only swordigo-nextos-v108.
 install -m 0755 "$BIN" "$GAME/swordigo-nextos"
-# v1.0.4 embedded NXPORT_EXECUTABLE=swordigo in the visible launcher.  Some
-# overlay installers preserve that old .sh while updating the game directory,
-# creating a mixed install that can never select swordigo-nextos.  Ship an
-# ordinary, byte-identical ELF at the old path for the transition: symlinks are
-# deliberately unsuitable because nxbootstrap rejects linked runtimes and
-# common FAT extractors do not preserve them.  Current launchers never select
-# this compatibility name.
 install -m 0755 "$BIN" "$GAME/swordigo"
 install -m 0644 "$ROOT/swordigo/nxbootstrap.sh" "$GAME/nxbootstrap.sh"
+install -m 0644 "$VERSIONED_BOOTSTRAP" \
+  "$GAME/nxbootstrap-$BOOTSTRAP_VERSION.sh"
 install -m 0644 "$ROOT/swordigo/nxport.json" "$GAME/nxport.json"
+install -m 0644 "$ROOT/swordigo/nxdeployment.json" \
+  "$GAME/nxdeployment.json"
 install -m 0644 "$ROOT/alsoft.conf" "$GAME/alsoft.conf"
 install -m 0644 "$ROOT/extractor.json" "$GAME/extractor.json"
 install -m 0644 "$ROOT/version.txt" "$GAME/version.txt"
@@ -85,21 +112,27 @@ install -m 0755 "$ROOT/Swordigo.sh" "$STAGE/package/Swordigo.sh"
 
 bash -n "$STAGE/package/Swordigo.sh"
 bash -n "$GAME/nxbootstrap.sh"
-grep -q 'source "$NXPORT_GAME_DIR/nxbootstrap.sh"' \
+bash -n "$GAME/nxbootstrap-$BOOTSTRAP_VERSION.sh"
+grep -q 'source "$NXPORT_GAME_DIR/$NXPORT_BOOTSTRAP_LIBRARY"' \
   "$STAGE/package/Swordigo.sh" || {
-  printf 'visible launcher does not load nxbootstrap directly\n' >&2
+  printf 'visible launcher does not load the pinned nxbootstrap directly\n' >&2
   exit 1
 }
 grep -q 'nxbootstrap_main "$@"' "$STAGE/package/Swordigo.sh" || {
   printf 'visible launcher does not invoke nxbootstrap_main\n' >&2
   exit 1
 }
-grep -Fx 'NXPORT_EXECUTABLE=swordigo-nextos' \
+grep -Fx 'NXPORT_EXECUTABLE=swordigo-nextos-v108' \
   "$STAGE/package/Swordigo.sh" >/dev/null || {
   printf 'visible launcher and manifest disagree on executable\n' >&2
   exit 1
 }
-grep -F "NXPORT_REQUIRED_FILES='swordigo-nextos" \
+grep -Fx 'NXPORT_BOOTSTRAP_LIBRARY=nxbootstrap-0.5.1.sh' \
+  "$STAGE/package/Swordigo.sh" >/dev/null || {
+  printf 'visible launcher does not pin nxbootstrap 0.5.1\n' >&2
+  exit 1
+}
+grep -F "NXPORT_REQUIRED_FILES='swordigo-nextos-v108" \
   "$STAGE/package/Swordigo.sh" >/dev/null || {
   printf 'visible launcher and manifest disagree on required_files\n' >&2
   exit 1
@@ -108,13 +141,39 @@ grep -F "NXPORT_REQUIRED_FILES='swordigo-nextos" \
   printf 'obsolete second-stage run.sh entered the package\n' >&2
   exit 1
 }
-[ -f "$GAME/swordigo" ] && [ ! -L "$GAME/swordigo" ] &&
-  [ -x "$GAME/swordigo" ] || {
-  printf 'v1.0.4 update bridge is missing or unsafe\n' >&2
+launcher_count=$(find "$STAGE/package" -maxdepth 1 -type f -name '*.sh' |
+  wc -l)
+[ "$launcher_count" -eq 1 ] || {
+  printf 'package must contain exactly one visible launcher, found %s\n' \
+    "$launcher_count" >&2
   exit 1
 }
-cmp -s "$GAME/swordigo-nextos" "$GAME/swordigo" || {
-  printf 'v1.0.4 update bridge diverges from swordigo-nextos\n' >&2
+if find "$STAGE/package" -type f -name 'run.sh' -print -quit | grep -q .; then
+  printf 'forbidden run.sh entered the package\n' >&2
+  exit 1
+fi
+for runtime in swordigo-nextos-v108 swordigo-nextos swordigo; do
+  [ -f "$GAME/$runtime" ] && [ ! -L "$GAME/$runtime" ] &&
+    [ -x "$GAME/$runtime" ] || {
+    printf 'runtime path is missing or unsafe: %s\n' "$runtime" >&2
+    exit 1
+  }
+  cmp -s "$GAME/swordigo-nextos-v108" "$GAME/$runtime" || {
+    printf 'runtime alias diverges from swordigo-nextos-v108: %s\n' \
+      "$runtime" >&2
+    exit 1
+  }
+done
+for bootstrap in nxbootstrap.sh nxbootstrap-0.5.1.sh; do
+  [ -f "$GAME/$bootstrap" ] && [ ! -L "$GAME/$bootstrap" ] &&
+    [ ! -x "$GAME/$bootstrap" ] || {
+    printf 'bootstrap path is missing, linked or executable: %s\n' \
+      "$bootstrap" >&2
+    exit 1
+  }
+done
+cmp -s "$GAME/nxbootstrap.sh" "$GAME/nxbootstrap-0.5.1.sh" || {
+  printf 'canonical and versioned nxbootstrap bytes diverge\n' >&2
   exit 1
 }
 
@@ -141,19 +200,20 @@ if grep -IRnE '192[.]168[.]|169[.]254[.]|10[.][0-9]+[.]|/home/|/media/|root@|pas
   exit 1
 fi
 
-# Only the runtime, its byte-identical v1.0.4 update bridge and extractor UI
-# may be ELFs.  Every copy is independently checked against the public ABI
-# ceiling below.
+# Only the versioned runtime, its two byte-identical update aliases and the
+# extractor UI may be ELFs. Every copy is independently checked against the
+# public ABI ceiling below.
 while IFS= read -r -d '' candidate; do
   case "$(file -b "$candidate")" in
     *ELF*)
       relative=${candidate#"$STAGE/package/"}
       case "$relative" in
-        swordigo/swordigo-nextos|swordigo/swordigo|swordigo/nxextract/nxextract-ui) ;;
+        swordigo/swordigo-nextos-v108|swordigo/swordigo-nextos|\
+        swordigo/swordigo|swordigo/nxextract/nxextract-ui) ;;
         *) printf 'unexpected ELF entered package: %s\n' "$relative" >&2; exit 1 ;;
       esac
       newest=$(readelf --version-info "$candidate" 2>/dev/null |
-        grep -oE 'GLIBC_[0-9]+([.][0-9]+)*' | sort -Vu | tail -1)
+        grep -oE 'GLIBC_[0-9]+([.][0-9]+)*' | sort -Vu | tail -1 || true)
       [ -n "$newest" ] || {
         printf 'could not determine glibc requirement: %s\n' "$relative" >&2
         exit 1
@@ -167,6 +227,7 @@ while IFS= read -r -d '' candidate; do
           "$relative" "$newest" >&2
         exit 1
       fi
+      printf 'ELF OK: %s | ABI %s\n' "$relative" "$newest"
       ;;
     *PE32*|*Mach-O*)
       printf 'foreign executable entered package: %s\n' "$candidate" >&2; exit 1 ;;
@@ -187,10 +248,30 @@ mv -f -- "$TEMP_ZIP" "$OUTPUT"
 HASH=$(sha256sum "$OUTPUT" | awk '{print $1}')
 printf '%s  %s\n' "$HASH" "$(basename "$OUTPUT")" > "$OUTPUT.sha256"
 unzip -tq "$OUTPUT" >/dev/null
-unzip -p "$OUTPUT" swordigo/swordigo-nextos > "$STAGE/zip-primary"
-unzip -p "$OUTPUT" swordigo/swordigo > "$STAGE/zip-bridge"
-cmp -s "$STAGE/zip-primary" "$STAGE/zip-bridge" || {
-  printf 'ZIP changed the v1.0.4 update bridge\n' >&2
+zip_launcher_count=$(unzip -Z1 "$OUTPUT" |
+  grep -Ec '^[^/]+[.]sh$' || true)
+[ "$zip_launcher_count" -eq 1 ] || {
+  printf 'ZIP must contain exactly one visible launcher, found %s\n' \
+    "$zip_launcher_count" >&2
+  exit 1
+}
+if unzip -Z1 "$OUTPUT" | grep -E '(^|/)run[.]sh$' >/dev/null; then
+  printf 'ZIP contains forbidden run.sh\n' >&2
+  exit 1
+fi
+unzip -p "$OUTPUT" swordigo/swordigo-nextos-v108 > "$STAGE/zip-primary"
+for runtime in swordigo-nextos swordigo; do
+  unzip -p "$OUTPUT" "swordigo/$runtime" > "$STAGE/zip-$runtime"
+  cmp -s "$STAGE/zip-primary" "$STAGE/zip-$runtime" || {
+    printf 'ZIP changed runtime alias: %s\n' "$runtime" >&2
+    exit 1
+  }
+done
+unzip -p "$OUTPUT" swordigo/nxbootstrap.sh > "$STAGE/zip-bootstrap"
+unzip -p "$OUTPUT" swordigo/nxbootstrap-0.5.1.sh \
+  > "$STAGE/zip-bootstrap-versioned"
+cmp -s "$STAGE/zip-bootstrap" "$STAGE/zip-bootstrap-versioned" || {
+  printf 'ZIP changed canonical/versioned nxbootstrap equality\n' >&2
   exit 1
 }
 

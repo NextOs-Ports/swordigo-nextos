@@ -1,3 +1,60 @@
+# Swordigo v1.0.8 release candidate — deployment identity and early diagnostics
+
+Candidate ZIP SHA-256:
+`329289294d00176e937f5854c3214a751e655c191577aa20902f643f20870a3b`
+
+Selected loader SHA-256:
+`c1add34c0f815652c21e879d652632dd1e0705cc364088d2b1a59d061e64426c`
+
+nxbootstrap 0.5.1 SHA-256:
+`71bd91ef039feb4ed60aa0a1b26eaddafc1ceef80cdf34051fc6aacd2fdae902`
+
+Deployment ID:
+`d466c521061221d2675d73b2af4f95c4657c9850e333c57734c8ab2be51b687b`
+
+This candidate applies the generated nxbootstrap 0.5.1 deployment contract
+without changing Swordigo's native lifecycle, rendering, audio or controls.
+`Swordigo.sh` pins `nxbootstrap-0.5.1.sh` by filename, version and SHA-256 and
+requires the matching static `nxdeployment.json` receipt. The regular
+`nxbootstrap.sh` copy is byte-identical for old overlay launchers, but the new
+launcher never uses it as a fallback. There is still exactly one visible
+launcher and no `run.sh`.
+
+The selected runtime is now `swordigo-nextos-v108`, so a firmware overlay
+cannot quietly leave the 1.0.7 payload in place. Regular files named
+`swordigo-nextos` and `swordigo` carry the same bytes for launchers retained
+from v1.0.5-v1.0.7 and v1.0.4. The package verifies all three copies before and
+after ZIP creation and audits every Linux ELF against `GLIBC_2.30`.
+
+The field evidence that motivated this candidate must not be read as a v1.0.8
+test result: the dArkOSRE report showed a hybrid deployment with a new launcher
+and ELF beside old bootstrap/alias state; the muOS report returned without a
+log; and a ROCKNIX community report said v1.0.5 installed successfully but was
+not a sealed acceptance run. Early launcher failures now write a fresh
+`swordigo-launcher-error.<pid>.log`; runtime logs identify the deployment,
+bootstrap and lifecycle phase. The receipt proves which generated files were
+installed, not that a launch attempt happened.
+
+This candidate has host/build/package verification only. Clean installation,
+owner-data extraction and gameplay on physical devices remain pending.
+
+## Português
+
+Esta candidata aplica o deployment gerado do nxbootstrap 0.5.1 sem alterar o
+ciclo de vida nativo, renderização, áudio ou controles do Swordigo. O launcher
+fixa `nxbootstrap-0.5.1.sh` por nome, versão e SHA-256 e exige o receipt
+`nxdeployment.json`. A cópia regular `nxbootstrap.sh` é byte a byte idêntica
+para overlays antigos, mas não serve de fallback ao launcher novo. Continua
+existindo um único launcher visível e nenhum `run.sh`.
+
+O runtime selecionado passa a `swordigo-nextos-v108`; os nomes antigos
+`swordigo-nextos` e `swordigo` são arquivos regulares com os mesmos bytes. A
+evidência de dArkOSRE, muOS e ROCKNIX acima pertence a releases anteriores e
+não valida esta candidata. A v1.0.8 ainda precisa de instalação limpa, extração
+e gameplay em aparelhos físicos.
+
+---
+
 # Swordigo v1.0.7 — reliable updates from 1.0.4
 
 Release ZIP SHA-256:

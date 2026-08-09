@@ -11,7 +11,7 @@
 set -euo pipefail
 
 PORT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-OUTPUT=${SWORDIGO_UNIVERSAL_OUTPUT:-swordigo-nextos}
+OUTPUT=${SWORDIGO_UNIVERSAL_OUTPUT:-swordigo-nextos-v108}
 
 if [ "${SWORDIGO_BUSTER_IN_CONTAINER:-0}" != "1" ]; then
   NEXTOS_ROOT=${NEXTOS_ROOT:-/mnt/ARQUIVOS/NextOS-Elite-Edition}
