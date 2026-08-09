@@ -111,30 +111,32 @@ nxbootstrap_safe_directory() {
 nxbootstrap_make_executable() {
   local path=$1 fd path_identity fd_identity link_count
   nxbootstrap_safe_regular_file "$path" || return 1
-  exec {fd}< "$path" 2>/dev/null || return 1
+  if ! { exec {fd}< "$path"; } 2>/dev/null; then
+    return 1
+  fi
   nxbootstrap_safe_regular_file "$path" || {
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   }
   path_identity=$(stat -L -c '%d:%i' -- "$path" 2>/dev/null) || {
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   }
   fd_identity=$(stat -L -c '%d:%i' -- "/proc/self/fd/$fd" 2>/dev/null) || {
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   }
   link_count=$(stat -L -c '%h' -- "/proc/self/fd/$fd" 2>/dev/null) || {
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   }
   if [[ $path_identity != "$fd_identity" || $link_count != 1 ]] ||
      ! chmod a+x -- "/proc/self/fd/$fd" 2>/dev/null ||
      [[ ! -x /proc/self/fd/$fd ]]; then
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   fi
-  exec {fd}>&- 2>/dev/null || true
+  exec {fd}>&- || true
   [[ -x $path && ! -L $path ]]
 }
 
@@ -368,7 +370,7 @@ nxbootstrap_open_fresh_log_fd() {
 
   [[ -o noclobber ]] && noclobber_was_set=1
   set -C
-  if ! exec {fd}> "$log" 2>/dev/null; then
+  if ! { exec {fd}> "$log"; } 2>/dev/null; then
     (( noclobber_was_set != 0 )) || set +C
     return 1
   fi
@@ -376,23 +378,23 @@ nxbootstrap_open_fresh_log_fd() {
 
   if [[ ! -f $log || -L $log || ! -O $log ]] ||
      [[ $(nxbootstrap_file_link_count "$log" 2>/dev/null || true) != 1 ]]; then
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   fi
   path_identity=$(stat -L -c '%d:%i' -- "$log" 2>/dev/null) || {
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   }
   fd_identity=$(stat -L -c '%d:%i' -- "/proc/self/fd/$fd" 2>/dev/null) || {
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   }
   [[ $path_identity == "$fd_identity" ]] || {
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   }
   chmod 0600 -- "/proc/self/fd/$fd" 2>/dev/null || {
-    exec {fd}>&- 2>/dev/null || true
+    exec {fd}>&- || true
     return 1
   }
   NXBOOTSTRAP_LOG_FD=$fd
@@ -646,29 +648,31 @@ nxbootstrap_try_flock() {
   local path_identity fd_identity
   [[ ! -e $lock_file || ( -f $lock_file && ! -L $lock_file ) ]] || return 1
   # Append mode avoids truncating even if an unexpected hard link exists.
-  exec 9>> "$lock_file" 2>/dev/null || return 1
+  if ! { exec 9>> "$lock_file"; } 2>/dev/null; then
+    return 1
+  fi
   [[ -f $lock_file && ! -L $lock_file && -O $lock_file ]] || {
-    exec 9>&- 2>/dev/null || true
+    exec 9>&- || true
     return 1
   }
   link_count=$(stat -L -c '%h' -- /proc/self/fd/9 2>/dev/null) || {
-    exec 9>&- 2>/dev/null || true
+    exec 9>&- || true
     return 1
   }
   [[ $link_count == 1 ]] || {
-    exec 9>&- 2>/dev/null || true
+    exec 9>&- || true
     return 1
   }
   path_identity=$(stat -L -c '%d:%i' -- "$lock_file" 2>/dev/null) || {
-    exec 9>&- 2>/dev/null || true
+    exec 9>&- || true
     return 1
   }
   fd_identity=$(stat -L -c '%d:%i' -- /proc/self/fd/9 2>/dev/null) || {
-    exec 9>&- 2>/dev/null || true
+    exec 9>&- || true
     return 1
   }
   [[ $path_identity == "$fd_identity" ]] || {
-    exec 9>&- 2>/dev/null || true
+    exec 9>&- || true
     return 1
   }
   # BusyBox flock does not consistently implement util-linux -E. Closing fd 9
@@ -676,7 +680,7 @@ nxbootstrap_try_flock() {
   flock -n 9 2>/dev/null
   status=$?
   if (( status != 0 )); then
-    exec 9>&- 2>/dev/null || true
+    exec 9>&- || true
     return 1
   fi
   NXBOOTSTRAP_LOCK_KIND=flock
@@ -731,7 +735,7 @@ nxbootstrap_release_lock() {
   case ${NXBOOTSTRAP_LOCK_KIND:-} in
     flock)
       flock -u 9 2>/dev/null || true
-      exec 9>&- 2>/dev/null || true
+      exec 9>&- || true
       ;;
     mkdir)
       if [[ -d ${NXBOOTSTRAP_LOCK_PATH:-} &&

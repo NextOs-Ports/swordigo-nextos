@@ -1,3 +1,20 @@
+# Swordigo v1.0.6 — durable runtime logging
+
+Release ZIP SHA-256:
+`92031b8bd83f8da083ccc81d38b09a91f6c0205f8ca1914f8b25d4772ac20849`
+
+This maintenance release keeps every gameplay, graphics, audio, control and
+extraction change from v1.0.5. It fixes the universal bootstrap's descriptor
+probes so their local error suppression cannot redirect the launcher's stderr
+away from `debug.log` during the runtime handoff. The canonical isolated
+bootstrap suite covers the regression; no device-specific workaround was
+added.
+
+The package remains BYO-data, contains one visible `Swordigo.sh`, has no
+`run.sh`, and keeps the public loader name `swordigo-nextos`.
+
+---
+
 # Swordigo v1.0.5 — dArkOSRE display handoff and transactional present
 
 Release ZIP SHA-256:

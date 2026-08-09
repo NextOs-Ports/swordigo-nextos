@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.6 — 2026-08-09
+
+- Fixed the universal bootstrap's file-descriptor probes so their local error
+  suppression cannot leave the launcher's standard error redirected to
+  `/dev/null`. Swordigo's loader and framework diagnostics now remain in
+  `debug.log` after the handoff.
+- Runtime, graphics, audio, controls, extraction and data are unchanged from
+  1.0.5; this is a logging-only framework correction covered by the canonical
+  isolated bootstrap regression suite.
+
 ## 1.0.5 — 2026-08-09
 
 - Addressed the dArkOSRE-class “audio but no picture” launch path without a
