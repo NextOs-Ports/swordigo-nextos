@@ -19,8 +19,8 @@ esac
 if [ "${SWORDIGO_SKIP_BUILD:-0}" != 1 ]; then
   "$ROOT/build_universal.sh"
 fi
-BIN=$ROOT/swordigo-universal
-[ -x "$BIN" ] || { printf 'swordigo-universal is missing\n' >&2; exit 1; }
+BIN=$ROOT/swordigo-nextos
+[ -x "$BIN" ] || { printf 'swordigo-nextos is missing\n' >&2; exit 1; }
 
 MAX_GLIBC=$(readelf --version-info "$BIN" |
   grep -oE 'GLIBC_[0-9]+([.][0-9]+)*' | sort -Vu | tail -1)
@@ -52,7 +52,7 @@ trap 'rm -rf -- "$STAGE"' EXIT
 GAME=$STAGE/package/swordigo
 mkdir -p "$GAME/gamedata" "$GAME/licenses"
 
-install -m 0755 "$BIN" "$GAME/swordigo"
+install -m 0755 "$BIN" "$GAME/swordigo-nextos"
 install -m 0644 "$ROOT/swordigo/nxbootstrap.sh" "$GAME/nxbootstrap.sh"
 install -m 0644 "$ROOT/swordigo/nxport.json" "$GAME/nxport.json"
 install -m 0644 "$ROOT/alsoft.conf" "$GAME/alsoft.conf"
@@ -84,8 +84,22 @@ grep -q 'nxbootstrap_main "$@"' "$STAGE/package/Swordigo.sh" || {
   printf 'visible launcher does not invoke nxbootstrap_main\n' >&2
   exit 1
 }
+grep -Fx 'NXPORT_EXECUTABLE=swordigo-nextos' \
+  "$STAGE/package/Swordigo.sh" >/dev/null || {
+  printf 'visible launcher and manifest disagree on executable\n' >&2
+  exit 1
+}
+grep -F "NXPORT_REQUIRED_FILES='swordigo-nextos" \
+  "$STAGE/package/Swordigo.sh" >/dev/null || {
+  printf 'visible launcher and manifest disagree on required_files\n' >&2
+  exit 1
+}
 [ ! -e "$GAME/run.sh" ] || {
   printf 'obsolete second-stage run.sh entered the package\n' >&2
+  exit 1
+}
+[ ! -e "$GAME/swordigo" ] || {
+  printf 'legacy loader name entered the package\n' >&2
   exit 1
 }
 
@@ -118,7 +132,7 @@ while IFS= read -r -d '' candidate; do
     *ELF*)
       relative=${candidate#"$STAGE/package/"}
       case "$relative" in
-        swordigo/swordigo|swordigo/nxextract/nxextract-ui) ;;
+        swordigo/swordigo-nextos|swordigo/nxextract/nxextract-ui) ;;
         *) printf 'unexpected ELF entered package: %s\n' "$relative" >&2; exit 1 ;;
       esac
       newest=$(readelf --version-info "$candidate" 2>/dev/null |

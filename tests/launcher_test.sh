@@ -15,6 +15,12 @@ grep -q 'source "$NXPORT_GAME_DIR/nxbootstrap.sh"' "$ROOT/Swordigo.sh" ||
   fail 'entry script does not source nxbootstrap directly'
 grep -q 'nxbootstrap_main "$@"' "$ROOT/Swordigo.sh" ||
   fail 'entry script does not invoke nxbootstrap_main'
+grep -Fx 'NXPORT_EXECUTABLE=swordigo-nextos' "$ROOT/Swordigo.sh" >/dev/null ||
+  fail 'generated launcher executable diverges from nxport.json'
+grep -F "NXPORT_REQUIRED_FILES='swordigo-nextos" "$ROOT/Swordigo.sh" >/dev/null ||
+  fail 'generated launcher required_files diverges from nxport.json'
+grep -F 'game.swordigo.present-finish' "$ROOT/Swordigo.sh" >/dev/null ||
+  fail 'generated launcher omitted the declared present policy'
 if grep -q 'run[.]sh' "$ROOT/Swordigo.sh"; then
   fail 'obsolete second-stage run.sh is still referenced'
 fi
@@ -31,9 +37,24 @@ grep -q 'configure_runtime_environment' "$ROOT/src/main.c" ||
   fail 'adapter-owned runtime environment is not initialized in the loader'
 grep -q 'SWORDIGO_DEBUG_CONTROL' "$ROOT/src/main.c" ||
   fail 'developer control channel is not opt-in'
+grep -q 'SWORDIGO_GLFINISH' "$ROOT/src/main.c" ||
+  fail 'KMSDRM present synchronization has no explicit policy override'
 if grep -q 'fopen(LOG_NAME' "$ROOT/src/util.c"; then
   fail 'loader still competes with nxbootstrap for the durable log'
 fi
+
+python3 -B - "$ROOT/swordigo/nxport.json" <<'PY' ||
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    manifest = json.load(stream)
+assert manifest["executable"] == "swordigo-nextos"
+assert "swordigo-nextos" in manifest["required_files"]
+assert "swordigo" not in manifest["required_files"]
+assert "game.swordigo.present-finish" in manifest["enabled_quirks"]
+PY
+  fail 'manifest does not use the canonical public loader name/present policy'
 
 stub_bootstrap() {
   cat > "$1" <<'STUB'

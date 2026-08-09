@@ -109,15 +109,29 @@ stack canary is anchored in a thread-local pad because the game reads it from
 the Bionic TLS slot. `STUDY.md` has the full reverse-engineering notes.
 
 The public package has one launcher chain only:
-`Swordigo.sh → swordigo/nxbootstrap.sh → swordigo/swordigo`. There is no
+`Swordigo.sh → swordigo/nxbootstrap.sh → swordigo/swordigo-nextos`. There is no
 second-stage `run.sh`. NXExtract 1.2.6 runs as an isolated foreground phase;
 the game-specific OpenAL policy stays in the loader adapter rather than in the
 generic bootstrap.
 
+Before SDL opens the display, the bootstrap also checks PortMaster's own live
+dialog pipe. If a firmware-specific platform helper returned without closing
+that dialog, the bootstrap closes that exact dialog through PortMaster's
+official function. It never guesses a firmware name and never kills an
+unrelated process. On KMSDRM, the adapter drains the GLES queue before swap;
+the opaque-backbuffer operation preserves and restores the game's framebuffer,
+colour mask, clear colour and scissor state exactly.
+
+The sanitized v1.0.5 acceptance receipt is in the
+[`references/v1.0.5-multi-device-acceptance.json`](https://github.com/NextOs-Ports/swordigo-nextos/blob/v1.0.5/references/v1.0.5-multi-device-acceptance.json)
+source record.
+It records the package hash and the two available physical regression runs;
+confirmation on the original dArkOSRE report remains pending.
+
 ## Build
 
 ```sh
-./build_universal.sh          # -> swordigo-universal
+./build_universal.sh          # -> swordigo-nextos
 package/build-package.sh      # public BYO-data zip
 ```
 
@@ -244,15 +258,28 @@ fica ancorado num pad thread-local porque o jogo o lê do slot TLS do bionic.
 As notas completas de engenharia reversa estão em `STUDY.md`.
 
 O pacote público tem uma única cadeia de lançamento:
-`Swordigo.sh → swordigo/nxbootstrap.sh → swordigo/swordigo`. Não existe
+`Swordigo.sh → swordigo/nxbootstrap.sh → swordigo/swordigo-nextos`. Não existe
 `run.sh` intermediário. O NXExtract 1.2.6 roda como fase isolada em foreground;
 a política OpenAL específica do jogo fica no adapter do loader, não no
 bootstrap genérico.
 
+Antes de a SDL abrir o display, o bootstrap também verifica o pipe vivo do
+próprio diálogo do PortMaster. Se um helper específico do firmware retornou sem
+fechar esse diálogo, o bootstrap fecha apenas aquele diálogo pela função oficial
+do PortMaster. Não escolhe correção pelo nome do firmware nem mata processo
+alheio. No KMSDRM, o adapter drena a fila GLES antes do swap; a correção de alpha
+preserva e restaura exatamente framebuffer, máscara de cor, clear color e
+scissor do jogo.
+
+O recibo sanitizado da v1.0.5 está no registro-fonte
+[`references/v1.0.5-multi-device-acceptance.json`](https://github.com/NextOs-Ports/swordigo-nextos/blob/v1.0.5/references/v1.0.5-multi-device-acceptance.json).
+Ele registra o hash do pacote e as duas regressões físicas disponíveis; a
+confirmação no aparelho dArkOSRE do relato original continua pendente.
+
 ### Construir
 
 ```sh
-./build_universal.sh          # -> swordigo-universal
+./build_universal.sh          # -> swordigo-nextos
 package/build-package.sh      # zip público BYO-data
 ```
 

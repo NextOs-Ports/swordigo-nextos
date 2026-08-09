@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.5 — 2026-08-09
+
+- Addressed the dArkOSRE-class “audio but no picture” launch path without a
+  firmware-name exception. Some PortMaster platform modules replace the
+  default helper and return while their live dialog still owns the display.
+  The bootstrap now detects PortMaster's own live pipe and closes that exact
+  dialog through `PortMasterDialogExit` before any setup UI or game window.
+  It does not scan, signal or kill an unrelated process.
+- Hardened the GLES1 present transaction. The default backbuffer is selected
+  through SDL, EGL or the process symbol table; framebuffer, colour mask, clear
+  colour and scissor state are restored exactly after forcing alpha to one.
+  The diagnostic frame probe now reads framebuffer zero instead of whichever
+  off-screen FBO the game happened to leave bound.
+- KMSDRM now uses the same backend-derived finish-before-swap policy proven by
+  the framework (`SWORDIGO_GLFINISH=0/1` remains an explicit override). Logs
+  record the actual swap interval, policy, window flags and GL resolver.
+- Renamed the project-built public loader to the stable authorship identity
+  `swordigo-nextos`. The original Android library keeps its upstream
+  `libswordigo.so` name.
+- Recorded the complete v1.0.5 package and two-device regression acceptance in
+  `references/v1.0.5-multi-device-acceptance.json`; confirmation on the
+  reporting dArkOSRE device remains pending.
+
 ## 1.0.4 — 2026-08-09
 
 - Migrated the public package to the universal generated launcher contract:

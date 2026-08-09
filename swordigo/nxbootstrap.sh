@@ -1123,7 +1123,7 @@ nxbootstrap_build_host_environment() {
 }
 
 nxbootstrap_platform_prepare() {
-  local status
+  local dialog_pipe status
   (( NXBOOTSTRAP_PLATFORM_PREPARED == 0 )) || return 0
   if declare -F pm_platform_helper >/dev/null 2>&1; then
     if pm_platform_helper "$NXBOOTSTRAP_BIN"; then
@@ -1133,6 +1133,30 @@ nxbootstrap_platform_prepare() {
       # Released launchers do not abort when an optional platform helper (for
       # example the ROCKNIX Sway fullscreen hint) returns non-zero.
       nxbootstrap_log "WARNING: pm_platform_helper returned status $status; continuing"
+    fi
+  fi
+  # A platform module may replace PortMaster's default helper and accidentally
+  # omit PortMasterDialogExit.  In that state the helper reports success while
+  # pugwash still owns the display; a game can then run normally (including
+  # audio and input) behind a black screen.  Close only the dialog proven by
+  # PortMaster's own live pipe, and only through PortMaster's own API.  This is
+  # state-based rather than a CFW-name workaround, and never scans or signals a
+  # foreign process.
+  dialog_pipe=${PM_PIPE:-}
+  if [[ -n $dialog_pipe && -e $dialog_pipe ]]; then
+    if declare -F PortMasterDialogExit >/dev/null 2>&1; then
+      if PortMasterDialogExit; then
+        if [[ -e $dialog_pipe ]]; then
+          nxbootstrap_log "WARNING: PortMaster dialog pipe remained after close request"
+        else
+          nxbootstrap_log "PortMaster dialog closed after platform helper"
+        fi
+      else
+        status=$?
+        nxbootstrap_log "WARNING: PortMaster dialog close returned status $status"
+      fi
+    else
+      nxbootstrap_log "WARNING: PortMaster dialog is active but its close API is unavailable"
     fi
   fi
   NXBOOTSTRAP_PLATFORM_PREPARED=1

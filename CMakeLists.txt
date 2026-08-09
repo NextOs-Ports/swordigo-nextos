@@ -9,7 +9,7 @@ pkg_check_modules(SDL2 REQUIRED sdl2)
 pkg_check_modules(OPENAL REQUIRED openal)
 pkg_check_modules(MPG123 REQUIRED libmpg123)
 
-add_executable(swordigo
+add_executable(swordigo-nextos
   src/main.c
   src/imports.c
   src/jni_fake.c
@@ -20,14 +20,14 @@ add_executable(swordigo
   src/pthread_bridge.c
 )
 
-target_include_directories(swordigo PRIVATE
+target_include_directories(swordigo-nextos PRIVATE
   ${SDL2_INCLUDE_DIRS}
   ${OPENAL_INCLUDE_DIRS}
   ${MPG123_INCLUDE_DIRS}
   src
 )
 
-target_link_libraries(swordigo PRIVATE
+target_link_libraries(swordigo-nextos PRIVATE
   ${SDL2_LIBRARIES}
   ${OPENAL_LIBRARIES}
   ${MPG123_LIBRARIES}
@@ -39,7 +39,7 @@ target_link_libraries(swordigo PRIVATE
   pthread
 )
 
-target_compile_options(swordigo PRIVATE
+target_compile_options(swordigo-nextos PRIVATE
   ${SDL2_CFLAGS_OTHER}
   -Wall -Wextra -Wno-unused-parameter
 )

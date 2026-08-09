@@ -3,9 +3,10 @@
   "argument_mode": "game-dir-and-passthrough",
   "enabled_quirks": [
     "game.swordigo.present-alpha-one",
-    "game.swordigo.fullscreen-desktop"
+    "game.swordigo.fullscreen-desktop",
+    "game.swordigo.present-finish"
   ],
-  "executable": "swordigo",
+  "executable": "swordigo-nextos",
   "home_mode": "port",
   "id": "swordigo",
   "launcher_name": "Swordigo.sh",
@@ -25,7 +26,7 @@
     "input.controller-api"
   ],
   "required_files": [
-    "swordigo",
+    "swordigo-nextos",
     "libswordigo.so",
     "res/7c.mp3",
     "alsoft.conf"

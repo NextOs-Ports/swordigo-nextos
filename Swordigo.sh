@@ -9,12 +9,12 @@ NXPORT_TITLE=Swordigo
 NXPORT_SCHEMA_VERSION=2
 NXPORT_ARCH=aarch64
 NXPORT_INTERPRETER=/lib/ld-linux-aarch64.so.1
-NXPORT_EXECUTABLE=swordigo
+NXPORT_EXECUTABLE=swordigo-nextos
 NXPORT_ARGUMENT_MODE=game-dir-and-passthrough
 NXPORT_HOME_MODE=port
 NXPORT_NXEXTRACT=yes
 NXPORT_NXEXTRACT_VERSION=1.2.6
-NXPORT_REQUIRED_FILES='swordigo
+NXPORT_REQUIRED_FILES='swordigo-nextos
 libswordigo.so
 res/7c.mp3
 alsoft.conf'
@@ -28,7 +28,8 @@ audio.output-open
 input.controller-mapping
 input.controller-api'
 NXPORT_ENABLED_QUIRKS='game.swordigo.present-alpha-one
-game.swordigo.fullscreen-desktop'
+game.swordigo.fullscreen-desktop
+game.swordigo.present-finish'
 NXPORT_RUNTIME_REPORT=log-and-logo
 
 ORIGINAL_SELF=${BASH_SOURCE[0]}

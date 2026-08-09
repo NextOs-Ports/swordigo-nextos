@@ -5,6 +5,7 @@
  * pad→touch / FWKeyboard. Blueprint: NaGaa95 swordigo_nx (same APK build).
  */
 #define _GNU_SOURCE
+#include <dlfcn.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -14,6 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <EGL/egl.h>
 #include <GLES/gl.h>
 #include <SDL2/SDL.h>
 
@@ -48,6 +50,11 @@ static SDL_GLContext g_ctx;
 static volatile int g_running = 1;
 static double g_time;
 static int debug_control_enabled;
+static int g_finish_before_swap;
+
+typedef void (*GlBindFramebufferOesFn)(GLenum target, GLuint framebuffer);
+static GlBindFramebufferOesFn g_bind_framebuffer_oes;
+static const char *g_bind_framebuffer_source = "unavailable";
 
 static int socket_path_exists(const char *path) {
   struct stat st;
@@ -690,6 +697,50 @@ static void request_exit(void) {
   g_running = 0;
 }
 
+static GlBindFramebufferOesFn resolve_bind_framebuffer_name(
+    const char *name, const char **source) {
+  void *sdl_symbol = SDL_GL_GetProcAddress(name);
+  if (sdl_symbol) {
+    *source = "SDL_GL_GetProcAddress";
+    return (GlBindFramebufferOesFn)sdl_symbol;
+  }
+
+  __eglMustCastToProperFunctionPointerType egl_symbol = eglGetProcAddress(name);
+  if (egl_symbol) {
+    *source = "eglGetProcAddress";
+    return (GlBindFramebufferOesFn)egl_symbol;
+  }
+
+  void *global_symbol = dlsym(RTLD_DEFAULT, name);
+  if (global_symbol) {
+    *source = "dlsym";
+    return (GlBindFramebufferOesFn)global_symbol;
+  }
+  return NULL;
+}
+
+static void resolve_present_functions(void) {
+  g_bind_framebuffer_oes = resolve_bind_framebuffer_name(
+      "glBindFramebufferOES", &g_bind_framebuffer_source);
+  if (!g_bind_framebuffer_oes)
+    g_bind_framebuffer_oes = resolve_bind_framebuffer_name(
+        "glBindFramebuffer", &g_bind_framebuffer_source);
+}
+
+static int finish_before_swap_policy(const char *video_driver) {
+  int automatic = video_driver && strcmp(video_driver, "KMSDRM") == 0;
+  const char *override = getenv("SWORDIGO_GLFINISH");
+  if (!override)
+    return automatic;
+  if (strcmp(override, "0") == 0)
+    return 0;
+  if (strcmp(override, "1") == 0)
+    return 1;
+  debugPrintf("gl: invalid SWORDIGO_GLFINISH='%s'; using backend policy\n",
+              override);
+  return automatic;
+}
+
 static int gl_init(void) {
   const char *debug_tap = getenv("SWORDIGO_DEBUG_TAP");
   if (debug_tap && *debug_tap) {
@@ -769,8 +820,12 @@ static int gl_init(void) {
     fprintf(stderr, "SDL_GL_CreateContext: %s\n", SDL_GetError());
     return -1;
   }
-  SDL_GL_MakeCurrent(g_win, g_ctx);
-  SDL_GL_SetSwapInterval(1);
+  if (SDL_GL_MakeCurrent(g_win, g_ctx) != 0) {
+    fprintf(stderr, "SDL_GL_MakeCurrent: %s\n", SDL_GetError());
+    return -1;
+  }
+  int swap_request = SDL_GL_SetSwapInterval(1);
+  resolve_present_functions();
   /* The window size a firmware grants is not always the size it draws into
    * (KMSDRM and scaled panels differ).  Touch hitboxes and the viewport must
    * follow the real drawable, otherwise the HUD lands off-target on some
@@ -793,13 +848,19 @@ static int gl_init(void) {
    * the firmware actually granted (alpha above all) and the GL blob in use. */
   const GLubyte *renderer = glGetString(GL_RENDERER);
   const GLubyte *version = glGetString(GL_VERSION);
+  const char *video_driver = SDL_GetCurrentVideoDriver();
+  g_finish_before_swap = finish_before_swap_policy(video_driver);
   debugPrintf("gl: GLES1.1 %dx%d alpha=%d depth=%d driver='%s'\n", screen_width,
               screen_height, got_alpha, got_depth,
-              SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?");
-  debugPrintf("gl: renderer='%s' version='%s' fullscreen=%s\n",
+              video_driver ? video_driver : "?");
+  debugPrintf("gl: renderer='%s' version='%s' fullscreen=%s flags=0x%x\n",
               renderer ? (const char *)renderer : "?",
               version ? (const char *)version : "?",
-              fullscreen == SDL_WINDOW_FULLSCREEN ? "exclusive" : "desktop");
+              fullscreen == SDL_WINDOW_FULLSCREEN ? "exclusive" : "desktop",
+              (unsigned)SDL_GetWindowFlags(g_win));
+  debugPrintf("gl: swap requested=%s interval=%d finish-before-swap=%s\n",
+              swap_request == 0 ? "yes" : "no", SDL_GL_GetSwapInterval(),
+              g_finish_before_swap ? "yes" : "no");
   return 0;
 }
 
@@ -811,6 +872,41 @@ static int gl_init(void) {
 #ifndef GL_FRAMEBUFFER_OES
 #define GL_FRAMEBUFFER_OES 0x8D40
 #endif
+#ifndef GL_FRAMEBUFFER_BINDING_OES
+#define GL_FRAMEBUFFER_BINDING_OES 0x8CA6
+#endif
+
+typedef struct PresentState {
+  GLboolean scissor_enabled;
+  GLboolean color_mask[4];
+  GLfloat clear_colour[4];
+  GLint framebuffer;
+  int framebuffer_known;
+} PresentState;
+
+static void snapshot_present_state(PresentState *state) {
+  memset(state, 0, sizeof(*state));
+  state->scissor_enabled = glIsEnabled(GL_SCISSOR_TEST);
+  glGetBooleanv(GL_COLOR_WRITEMASK, state->color_mask);
+  glGetFloatv(GL_COLOR_CLEAR_VALUE, state->clear_colour);
+  if (g_bind_framebuffer_oes) {
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING_OES, &state->framebuffer);
+    state->framebuffer_known = 1;
+  }
+}
+
+static void restore_present_state(const PresentState *state) {
+  glClearColor(state->clear_colour[0], state->clear_colour[1],
+               state->clear_colour[2], state->clear_colour[3]);
+  glColorMask(state->color_mask[0], state->color_mask[1],
+              state->color_mask[2], state->color_mask[3]);
+  if (state->scissor_enabled)
+    glEnable(GL_SCISSOR_TEST);
+  else
+    glDisable(GL_SCISSOR_TEST);
+  if (state->framebuffer_known)
+    g_bind_framebuffer_oes(GL_FRAMEBUFFER_OES, (GLuint)state->framebuffer);
+}
 
 /* Read the finished frame back once, a few seconds in, and log what is in it.
  * A black-screen report from a device nobody here owns is otherwise a guessing
@@ -819,11 +915,26 @@ static int gl_init(void) {
  * colour with alpha 255 means the picture is fine and the wrong surface is
  * being presented, and an empty frame means the engine really drew nothing. */
 static void probe_frame_once(int width, int height) {
+  if (width <= 0 || height <= 0 || width > 32768 || height > 32768) {
+    debugPrintf("gl: frame probe unavailable (invalid drawable %dx%d)\n", width,
+                height);
+    return;
+  }
   size_t pixels = (size_t)width * (size_t)height;
   unsigned char *buffer = malloc(pixels * 4);
-  if (!buffer)
+  if (!buffer) {
+    debugPrintf("gl: frame probe unavailable (allocation failed)\n");
     return;
+  }
+
+  GLint previous_framebuffer = 0;
+  if (g_bind_framebuffer_oes) {
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING_OES, &previous_framebuffer);
+    g_bind_framebuffer_oes(GL_FRAMEBUFFER_OES, 0);
+  }
   glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+  if (g_bind_framebuffer_oes)
+    g_bind_framebuffer_oes(GL_FRAMEBUFFER_OES, (GLuint)previous_framebuffer);
 
   size_t coloured = 0, opaque = 0, transparent = 0;
   for (size_t i = 0; i < pixels; i++) {
@@ -842,33 +953,23 @@ static void probe_frame_once(int width, int height) {
   free(buffer);
 }
 static void present_opaque_alpha(void) {
-  static void (*bind_framebuffer_oes)(GLenum, GLuint);
-  static int resolved = 0, logged = 0;
-  if (!resolved) {
-    resolved = 1;
-    bind_framebuffer_oes = SDL_GL_GetProcAddress("glBindFramebufferOES");
-  }
-
-  GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
-  GLfloat clear_colour[4];
-  glGetFloatv(GL_COLOR_CLEAR_VALUE, clear_colour);
-  if (scissor)
+  static int logged = 0;
+  PresentState state;
+  snapshot_present_state(&state);
+  if (state.scissor_enabled)
     glDisable(GL_SCISSOR_TEST);
-  if (bind_framebuffer_oes)
-    bind_framebuffer_oes(GL_FRAMEBUFFER_OES, 0);
+  if (state.framebuffer_known)
+    g_bind_framebuffer_oes(GL_FRAMEBUFFER_OES, 0);
   glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
-  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-  glClearColor(clear_colour[0], clear_colour[1], clear_colour[2],
-               clear_colour[3]);
-  if (scissor)
-    glEnable(GL_SCISSOR_TEST);
+  restore_present_state(&state);
 
   if (!logged) {
     logged = 1;
-    debugPrintf("gl: opaque-alpha present active (fbo rebind=%s)\n",
-                bind_framebuffer_oes ? "yes" : "unavailable");
+    debugPrintf("gl: opaque-alpha present active (fbo rebind=%s resolver=%s)\n",
+                g_bind_framebuffer_oes ? "yes" : "unavailable",
+                g_bind_framebuffer_source);
   }
 }
 
@@ -876,6 +977,8 @@ static void check_data(void) {
   struct stat st;
   if (stat(SO_NAME, &st) < 0)
     fatal_error("missing %s (place libswordigo.so next to the binary)", SO_NAME);
+  debugPrintf("game data: %s size=%lld bytes\n", SO_NAME,
+              (long long)st.st_size);
   if (stat("assets/resources", &st) < 0)
     fatal_error("missing assets/resources (extract from APK)");
   if (stat("res/7c.mp3", &st) < 0)
@@ -1011,9 +1114,11 @@ int main(int argc, char **argv) {
     updateApplication(fake_env, NULL, dt);
     drawApplication(fake_env, NULL);
     cursor_draw_overlay();
+    present_opaque_alpha();
     if (frame == 300)
       probe_frame_once(screen_width, screen_height);
-    present_opaque_alpha();
+    if (g_finish_before_swap)
+      glFinish();
     SDL_GL_SwapWindow(g_win);
   }
 

@@ -1,3 +1,60 @@
+# Swordigo v1.0.5 — dArkOSRE display handoff and transactional present
+
+Release ZIP SHA-256:
+`aa59275531ecfeb50789d37c416abeed7855519418a65ab3a7db33ba35281146`
+
+Sanitized acceptance receipt:
+[`v1.0.5-multi-device-acceptance.json`](https://github.com/NextOs-Ports/swordigo-nextos/blob/v1.0.5/references/v1.0.5-multi-device-acceptance.json)
+
+This release addresses the field report where Swordigo completed extraction and
+played audio but remained behind a dark screen on a dArkOSRE-class handheld.
+The failure is in the display handoff: some firmware modules replace
+PortMaster's normal platform helper with an empty function, so the helper can
+report success while PortMaster's live dialog still owns the screen. The
+bootstrap now checks the official live pipe and closes only that exact dialog
+through `PortMasterDialogExit`, before NXExtract UI or SDL starts. There is no
+device-name workaround and no broad process kill.
+
+The GLES1 present is hardened independently: framebuffer zero is resolved
+through SDL/EGL/process lookup, the alpha-only clear is transactional, and the
+original framebuffer, colour mask, clear colour and scissor state are restored
+exactly. The one-time frame probe now measures the actual backbuffer. KMSDRM
+drains GLES before the page flip, selected from the backend that really opened
+(`SWORDIGO_GLFINISH=0/1` is the diagnostic override).
+
+The public Linux loader is now named `swordigo-nextos`; the Android-owned
+`libswordigo.so` retains its original name. Existing extracted game data is
+reused, so updating does not repeat extraction. The package remains BYO-data,
+contains one visible `Swordigo.sh`, has no `run.sh`, and writes launcher/runtime
+events to `debug.log` while NXExtract keeps `nxextract.log`.
+
+The sanitized acceptance receipt is published with the source. Both available
+physical regression devices produced non-black opaque frames, opened audio and
+exited cleanly. Confirmation on the original dArkOSRE device is still pending.
+
+---
+
+# Swordigo v1.0.5 — correção do display no dArkOSRE
+
+Este release trata o relato de Swordigo com extração concluída e áudio normal,
+mas tela escura em aparelho da classe dArkOSRE. A falha fica na passagem do
+display: alguns módulos do firmware substituem o helper normal do PortMaster por
+uma função vazia, que retorna sucesso enquanto o diálogo vivo do PortMaster
+continua dono da tela. O bootstrap agora verifica o pipe oficial e fecha somente
+aquele diálogo por `PortMasterDialogExit`, antes da UI do NXExtract ou da SDL.
+Não há exceção pelo nome do aparelho e nenhum `pkill` amplo.
+
+O present GLES1 também ficou independente e transacional: seleciona o
+framebuffer zero, força apenas o alpha a 1 e restaura framebuffer, máscara de
+cor, clear color e scissor exatamente. No KMSDRM a fila GLES é concluída antes
+do page flip. O novo executável público se chama `swordigo-nextos`; a biblioteca
+Android original continua `libswordigo.so`. Dados já extraídos são reutilizados.
+Os dois aparelhos físicos disponíveis produziram frames opacos e não pretos,
+abriram áudio e encerraram corretamente; a confirmação no dArkOSRE do relato
+original ainda está pendente.
+
+---
+
 # Swordigo v1.0.4 — one launcher, one durable log
 
 The public ZIP now follows the universal PortMaster framework literally:
