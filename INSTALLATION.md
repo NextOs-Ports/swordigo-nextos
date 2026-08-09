@@ -32,6 +32,13 @@
 
 4. A successful install creates `libswordigo.so`, `assets/` and `res/`.
 
+### Updating from 1.0.4
+
+Extract v1.0.7 over the existing installation. You do **not** need to remove
+the APK, `assets/`, `res/`, `libswordigo.so` or saves. A compatibility copy in
+this release handles firmware installers that keep the old `Swordigo.sh`
+instead of replacing it; the current launcher still uses `swordigo-nextos`.
+
 Logs: `swordigo/debug.log` and `swordigo/nxextract.log`. If the launcher
 cannot find the game folder it writes `swordigo-launcher-error.log` next to the
 `.sh` and prints the reason on screen instead of returning silently.
@@ -56,5 +63,12 @@ cannot find the game folder it writes `swordigo-launcher-error.log` next to the
 3. Abra **Swordigo** pelo frontend e deixe o NXExtract terminar uma vez.
 
 4. O sucesso cria `libswordigo.so`, `assets/` e `res/`.
+
+### Atualização da 1.0.4
+
+Extraia a v1.0.7 por cima da instalação existente. Não apague o APK,
+`assets/`, `res/`, `libswordigo.so` nem os saves. Esta release contém uma cópia
+de compatibilidade para firmwares que preservam o `Swordigo.sh` antigo; o
+launcher atual continua usando `swordigo-nextos`.
 
 Logs: `swordigo/debug.log` e `swordigo/nxextract.log`.

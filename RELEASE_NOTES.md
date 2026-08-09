@@ -1,3 +1,44 @@
+# Swordigo v1.0.7 — reliable updates from 1.0.4
+
+Release ZIP SHA-256:
+`d79de193d43c134fc331a99dce15155de8a7cfb3dee3cde89ee28cdfbdd152a5`
+
+Canonical loader SHA-256:
+`c1add34c0f815652c21e879d652632dd1e0705cc364088d2b1a59d061e64426c`
+
+The dArkOSRE field log identified a mixed installation rather than the current
+runtime: it still embedded `executable=swordigo` and the two-quirk v1.0.4
+contract, while v1.0.5 and later embed `swordigo-nextos` and three quirks.
+Version 1.0.7 makes this update path deterministic by packaging a regular,
+byte-identical compatibility copy at the old path. Even when a firmware keeps
+the old visible launcher during an overlay update, it now executes the current
+loader. Current installations continue to use `swordigo-nextos` directly.
+
+The ZIP independently audits the canonical loader, compatibility copy and
+NXExtract UI. Both runtime paths are AArch64, byte-identical and require at
+most `GLIBC_2.27`; the extractor UI requires `GLIBC_2.17`. Package construction
+fails if either copy diverges, if any ELF exceeds `GLIBC_2.30`, or if owner game
+data enters the release.
+
+This release also contains the v1.0.6 durable-stderr correction relevant to the
+muOS v1.0.5 no-log report. The native Android lifecycle, rendering, audio,
+controls, extraction and user data are otherwise unchanged.
+
+## Português
+
+O log do dArkOSRE mostrou uma instalação mista: ainda estava usando
+`executable=swordigo` e os dois quirks da v1.0.4, embora desde a v1.0.5 o
+contrato use `swordigo-nextos` e três quirks. A v1.0.7 inclui no caminho antigo
+uma cópia ELF regular e byte a byte idêntica ao loader atual. Assim, mesmo que o
+firmware preserve o launcher antigo numa atualização por cima, ele executa o
+runtime novo. Instalações atuais continuam escolhendo `swordigo-nextos`.
+
+O ZIP também leva a correção de log da v1.0.6, importante para o relato do
+muOS com a v1.0.5. Não há APK nem dados do jogo no pacote, e não é necessário
+apagar `assets`, `res`, `libswordigo.so` ou saves ao atualizar.
+
+---
+
 # Swordigo v1.0.6 — durable runtime logging
 
 Release ZIP SHA-256:
