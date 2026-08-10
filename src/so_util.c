@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /*
  * so_util.c -- utils to load and hook .so modules
  *

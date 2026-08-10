@@ -12,12 +12,12 @@ PORT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd -P)
 VERSION=$(tr -d '\r\n' < "$PORT_DIR/version.txt")
 MANIFEST="$PORT_DIR/nxrelease.json"
 FRAMEWORK_ROOT=${NX_FRAMEWORK_ROOT:-"$PORT_DIR/../nextos_ports_android/framework"}
-NXRELEASE=${NXRELEASE:-"$SCRIPT_DIR/nxrelease-vendor/nxrelease/nxrelease.py"}
+NXRELEASE=${NXRELEASE:-"$FRAMEWORK_ROOT/nxrelease/nxrelease.py"}
 DESTINATION=${1:-"$PORT_DIR/.build/Swordigo.NextOS-v$VERSION-nxrelease"}
 ARCHIVE_NAME="Swordigo.NextOS-v$VERSION.zip"
 
 NXRELEASE_VERSION='nxrelease 0.2.5'
-NXRELEASE_SHA256=3f9db950e5f5c606544f53bf104170bfebba6850fae7814cba3971daff182751
+NXRELEASE_SHA256=dd307d3e18cd926be2cc51c2a7e9948193b3c309abcc414dfa8d784332df57ee
 
 fail() {
   printf 'swordigo package error: %s\n' "$*" >&2
@@ -59,11 +59,12 @@ trap cleanup EXIT INT TERM
 if [[ ${SWORDIGO_SKIP_BUILD:-0} != 1 ]]; then
   "$PORT_DIR/build_universal.sh"
 fi
-[[ -x $PORT_DIR/swordigo-nextos-v109 &&
-   ! -L $PORT_DIR/swordigo-nextos-v109 ]] ||
-  fail 'swordigo-nextos-v109 is missing, linked or not executable'
+[[ -x $PORT_DIR/swordigo-nextos &&
+   ! -L $PORT_DIR/swordigo-nextos ]] ||
+  fail 'swordigo-nextos is missing, linked or not executable'
 
-bash "$PORT_DIR/tests/launcher_test.sh"
+NXBOOTSTRAP_GENERATOR="$FRAMEWORK_ROOT/nxbootstrap/tools/generate-port.py" \
+  bash "$PORT_DIR/tests/launcher_test.sh"
 python3 -B "$NXRELEASE" validate --manifest "$MANIFEST"
 python3 -B "$NXRELEASE" bundle \
   --manifest "$MANIFEST" \

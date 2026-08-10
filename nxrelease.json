@@ -3,7 +3,7 @@
   "source_root": ".",
   "package": {
     "id": "swordigo",
-    "version": "1.0.10",
+    "version": "1.0.11",
     "profile": "universal-portmaster",
     "launcher": "Swordigo.sh",
     "launcher_chain": [
@@ -11,9 +11,9 @@
     ],
     "launcher_contract": {
       "generator": "nxbootstrap",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "config_path": "swordigo/nxport.json",
-      "config_sha256": "8e1deb587573bd55c428ebe6abf7af43851ef07eadce59ee9faf562d4cc4b9ea"
+      "config_sha256": "c2c7108bdd07c9ed34bef0448e242d061bea8239739c00e180813263de2eeda4"
     },
     "port_dir": "swordigo",
     "license": {
@@ -40,18 +40,6 @@
     "recipe_sha256": "b0af1e28929e8c4c7b3d355ce5b682ec2da66d029dbb0eee50000f202439eba8"
   },
   "dependencies": [
-    {
-      "namespace": "linux",
-      "architecture": "aarch64",
-      "soname": "libEGL.so.1",
-      "provider": "firmware"
-    },
-    {
-      "namespace": "linux",
-      "architecture": "aarch64",
-      "soname": "libGLESv1_CM.so.1",
-      "provider": "firmware"
-    },
     {
       "namespace": "linux",
       "architecture": "aarch64",
@@ -86,7 +74,8 @@
       "namespace": "linux",
       "architecture": "aarch64",
       "soname": "libmpg123.so.0",
-      "provider": "firmware"
+      "provider": "package",
+      "path": "swordigo/libmpg123.so.0"
     },
     {
       "namespace": "linux",
@@ -113,27 +102,25 @@
       "target": "Swordigo.sh",
       "kind": "launcher",
       "mode": "0755",
-      "sha256": "2b49998caebdc58858a7f0a462f37d3923d42c88487bd0d6f13f9d534ded6e25"
+      "sha256": "e296add5d5e4270eb85bcbb753259bf00cb630b678529d9dfb8d3b7daad1198b"
     },
     {
       "source": "swordigo/nxport.json",
       "target": "swordigo/nxport.json",
       "kind": "nxbootstrap-config",
       "mode": "0644",
-      "sha256": "8e1deb587573bd55c428ebe6abf7af43851ef07eadce59ee9faf562d4cc4b9ea"
+      "sha256": "c2c7108bdd07c9ed34bef0448e242d061bea8239739c00e180813263de2eeda4"
     },
     {
-      "source": "swordigo-nextos-v109",
-      "target": "swordigo/swordigo-nextos-v109",
+      "source": "swordigo-nextos",
+      "target": "swordigo/swordigo-nextos",
       "kind": "project-linux",
       "mode": "0755",
       "architecture": "aarch64",
       "build_profile": "universal-low-glibc",
       "provenance": "build_universal.sh; pinned offline Debian Buster image sha256:036c7910ea53bc78cc213452afa92fa83d55de1c51ae54f315af58b5a41a45cf; target sysroot used for headers only",
-      "sha256": "4b73352cfccc579de4d03c003905a18f2244df4a24945125209b5b94007d42fe",
+      "sha256": "e2163ec0b67309c93eb31ab939e9c1276fb392bfd050596422f4ee2fe061d287",
       "needed": [
-        "libEGL.so.1",
-        "libGLESv1_CM.so.1",
         "libSDL2-2.0.so.0",
         "libc.so.6",
         "libdl.so.2",
@@ -147,25 +134,40 @@
       "soname": null
     },
     {
+      "source": "libmpg123.so.0",
+      "target": "swordigo/libmpg123.so.0",
+      "kind": "third-party-linux",
+      "mode": "0755",
+      "architecture": "aarch64",
+      "build_profile": "universal-low-glibc",
+      "provenance": "mpg123 1.31.3 official source https://downloads.sourceforge.net/sourceforge/mpg123/mpg123-1.31.3.tar.bz2 sha256:1ca77d3a69a5ff845b7a0536f783fee554e1041139a6b978f6afe14f5814ad1a; LGPL-2.1-or-later; pinned offline Debian Buster builder",
+      "sha256": "0934e5561276e2642e2a17ce96ad9d94cf3237a4bbe8790a3ad1c7e47caf8b25",
+      "needed": [
+        "libc.so.6",
+        "libm.so.6"
+      ],
+      "soname": "libmpg123.so.0"
+    },
+    {
       "source": "README.md",
       "target": "swordigo/README.md",
       "kind": "payload",
       "mode": "0644",
-      "sha256": "bdb0147323f74f5f24f41bc407bff823265e5298b45a4232a96e498d14402866"
+      "sha256": "5f5781d096713fa345bbe431b65d43b25c782a6a74c439fbac9083a58f94f5b1"
     },
     {
       "source": "INSTALLATION.md",
       "target": "swordigo/INSTALLATION.md",
       "kind": "payload",
       "mode": "0644",
-      "sha256": "0179df4271dcfa720aac27d9e1d770c1123d91079cf093e6befe9fb0a7c31aac"
+      "sha256": "5caaf9f70829587dcc5678bc193cdcf49620f87057f9d2d0ebea7650f469f5fd"
     },
     {
       "source": "NOTICE.md",
       "target": "swordigo/NOTICE.md",
       "kind": "license-notice",
       "mode": "0644",
-      "sha256": "ece1ee9e1f6efa327703f4e8d2e5de13f56596effa9f9724cdbdfdabdb3c432e"
+      "sha256": "ab92e6e36737c266edafafaf6faac6bd62fa9535e44702e57ac90f7eb728b267"
     },
     {
       "source": "LICENSE",
@@ -179,7 +181,7 @@
       "target": "swordigo/version.txt",
       "kind": "payload",
       "mode": "0644",
-      "sha256": "00251bee1d03f658c2324926785a996dd040dff16bf993b2c520a20edbba72c8"
+      "sha256": "3b106e2ff87e58ed45b369d41f5f084a182052044b89bb9ff58ada97e206627f"
     },
     {
       "source": "package/GAMEDATA.txt",
@@ -251,6 +253,13 @@
       "kind": "license-notice",
       "mode": "0644",
       "sha256": "74d7d9d40e27fbfe23cb462f9608fa07cbe53ffb0b88a0da9e85dda240c2c788"
+    },
+    {
+      "source": "licenses/mpg123-LGPL-2.1-or-later.txt",
+      "target": "swordigo/licenses/mpg123-LGPL-2.1-or-later.txt",
+      "kind": "license-notice",
+      "mode": "0644",
+      "sha256": "c22482728a634a8dfdb4ff72a96d4c1ed64cd8f3e79335c401751ac591609366"
     }
   ],
   "exceptions": []

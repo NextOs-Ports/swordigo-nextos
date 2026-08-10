@@ -22,9 +22,8 @@ device drew.*
 
 Questions, device reports and bug reports: <https://discord.gg/DHfY62eDNN>
 
-A useful report has the device model, the firmware and its version, plus the
-`debug.log` and `nxextract.log` that sit next to the port. If runtime logging
-never opened, also send the newest `swordigo-launcher-error.<pid>.log`.
+A useful report has the device model, the firmware and its version, plus
+`log.txt`, `log.prev.txt` and `nxextract.log` from the `swordigo/` folder.
 
 ## Install
 
@@ -41,10 +40,9 @@ A successful install creates `libswordigo.so`, `assets/` and `res/` inside
 `ports/swordigo/`. Full steps, including the per-firmware card paths, in
 [`INSTALLATION.md`](INSTALLATION.md).
 
-Updating from an earlier release is safe as an overlay and preserves extracted
-data and saves. Version 1.0.8 selects a new `swordigo-nextos-v108` payload and
-the pinned `nxbootstrap-0.5.1.sh`; byte-identical regular compatibility copies
-cover launchers retained from v1.0.4-v1.0.7.
+Updating from an earlier release preserves extracted data and saves. Version
+1.0.11 returns to the stable public executable name `swordigo-nextos`; a clean
+install is recommended when replacing the failed 1.0.10 test candidate.
 
 Firmware note: on **NextOS / EmuELEC** EmulationStation lists launchers from
 `roms/ports_scripts/`, so `Swordigo.sh` also goes there while the game folder
@@ -83,8 +81,8 @@ behind, and the installer says exactly that in `nxextract.log`.
 | LB | magic equip |
 | RB | back |
 | START | pause / menu |
-| Right stick | on-screen cursor |
-| R3 | cursor click (touch) |
+| Right stick | smooth on-screen cursor |
+| R2 or R3 | cursor press / drag / release (touch) |
 | SELECT + START | quit |
 
 On many handhelds SELECT, START, L3 and R3 reach the system as
@@ -99,15 +97,17 @@ Evidence level, never a promise:
 |---|---|
 | R36S / ArkOS-class (RK3326, Mali-G31, glibc 2.30, 640×480) | **physically validated** — clean install from the ZIP itself, on-device extraction, title, gameplay, audio and music, exit chord, frontend restored |
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **physically validated** |
+| X5M / NextOS (Amlogic, Mali-G310, KMSDRM, 1920×1080) | **physically validated** — video, audio, music, controls, R2/R3 cursor press/drag/release |
 | Other AArch64 CFW with SDL2, OpenAL and GLES 1.1 | plausible, **not tested** |
 
-Those rows describe prior accepted releases. The v1.0.8 candidate itself has
-host/build/package validation only; its clean install, extraction and gameplay
-matrix still requires physical runs.
+Those rows describe prior accepted releases. Version 1.0.11 is validated by
+host/build/package gates first; its result on the current ArkOS repair target
+is recorded only after a clean physical run.
 
-The public executable is audited at a maximum requirement of `GLIBC_2.27` and
-needs only `libSDL2`, `libGLESv1_CM`, `libEGL`, `libopenal`, `libmpg123`, `libz`
-and the firmware's libc. No SDL video or audio backend is ever forced.
+The public executable is audited at a maximum requirement of `GLIBC_2.27`.
+The release bundles only a pinned low-glibc `libmpg123.so.0`; SDL2, GLES/EGL,
+OpenAL, zlib and libc remain firmware/PortMaster dependencies. No SDL video or
+audio backend is ever forced.
 
 ## Architecture
 
@@ -119,39 +119,26 @@ stack canary is anchored in a thread-local pad because the game reads it from
 the Bionic TLS slot. `STUDY.md` has the full reverse-engineering notes.
 
 The public package has one launcher chain only:
-`Swordigo.sh → swordigo/nxbootstrap-0.5.1.sh →
-swordigo/swordigo-nextos-v108`. There is no second-stage `run.sh`. The launcher
-pins the versioned bootstrap by version, SHA-256 and the static
-`nxdeployment.json` receipt. NXExtract 1.2.6 runs as an isolated foreground
-phase; the game-specific OpenAL policy stays in the loader adapter rather than
-in the generic bootstrap.
-
-Version 1.0.8 also packages byte-identical regular `swordigo-nextos` and
-`swordigo` runtime aliases plus a byte-identical `nxbootstrap.sh` compatibility
-copy. They make overlays safe when firmware preserves a launcher from
-v1.0.4-v1.0.7. The current launcher never selects those compatibility names;
-all ELF aliases pass the same AArch64 and low-glibc gates.
+`Swordigo.sh → swordigo/swordigo-nextos`. The generated nxbootstrap 0.6.1
+logic is self-contained in the visible launcher; there is no second-stage
+`run.sh` or bootstrap library. NXExtract 1.2.6 runs as an isolated foreground
+phase before the owner data gate. The game-specific OpenAL and graphics policy
+stays inside the loader adapter.
 
 The release ZIP is assembled from the explicit `nxrelease.json` allowlist by
 content-pinned NXRelease 0.2.5. Its embedded `swordigo/.nxrelease/` inventory,
 checksum manifest, ELF audit and SBOM make the exact launcher chain,
 dependencies and source pins independently verifiable after packaging.
 
-Failures before the runtime log opens are recorded independently as
-`swordigo-launcher-error.<pid>.log`, including the discovery stage, deployment
-ID and expected bootstrap identity. Once runtime starts, `debug.log` records
-the deployment, resolved bootstrap and explicit lifecycle phases. A receipt
-without a new log means only that deployment files exist; it cannot prove that
-the frontend invoked the launcher or that a writable log destination survived.
-
-Before SDL opens the display, required PortMaster integration fails closed if
-its control layer cannot initialize. An active `PM_PIPE` is trusted only when
-it is a live, non-symlink FIFO; the official close API must remove that exact
-dialog or launch stops with a diagnostic. The bootstrap never guesses a
-firmware name and never kills an unrelated process. On KMSDRM, the adapter
-drains the GLES queue before swap; the opaque-backbuffer operation preserves
-and restores the game's framebuffer, colour mask, clear colour and scissor
-state exactly.
+The launcher rotates the previous runtime log to `log.prev.txt` and writes the
+current attempt to `log.txt`. The loader records explicit lifecycle phases; a
+fatal signal report includes the phase and guest PC/LR offsets without trying
+to continue after the fault. Graphics repair is capability-driven: a failed
+provider is replaced only when an alternate object matches the active
+transport, exports the required symbols and initializes EGL against the live
+kernel. On KMSDRM, the adapter drains the GLES queue before swap; the
+opaque-backbuffer operation preserves and restores framebuffer, colour mask,
+clear colour and scissor state.
 
 The sanitized v1.0.5 acceptance receipt is in the
 [`references/v1.0.5-multi-device-acceptance.json`](https://github.com/NextOs-Ports/swordigo-nextos/blob/v1.0.5/references/v1.0.5-multi-device-acceptance.json)
@@ -162,13 +149,14 @@ confirmation on the original dArkOSRE report remains pending.
 ## Build
 
 ```sh
-./build_universal.sh          # -> swordigo-nextos-v108
+./build_universal.sh          # -> swordigo-nextos
 package/build-package.sh      # public BYO-data zip
 ```
 
 The cross build runs in a Debian Buster container to hold the glibc ceiling;
-SDL2, OpenAL, mpg123, GLES1 and EGL are linked only against SONAME stubs,
-because the device firmware is what provides them. Both the build recipe and
+SDL2, OpenAL and mpg123 are linked against stable SONAME stubs. The release
+supplies the pinned mpg123 build while device providers come from the target
+firmware. Both the build recipe and
 NXRelease reject `RPATH`/`RUNPATH`; the packager re-runs the launcher tests and
 refuses the ZIP if any Linux ELF is not the declared architecture, dependencies
 or low-glibc profile. Repeating the same manifest build produces identical ZIP
@@ -204,9 +192,8 @@ instalador valida e publica os dados no aparelho.
 
 Dúvidas, relatos de aparelho e bugs: <https://discord.gg/DHfY62eDNN>
 
-Relato útil traz o modelo do aparelho, o firmware e a versão, mais o
-`debug.log` e o `nxextract.log` que ficam ao lado do port. Se o log do runtime
-nem abriu, envie também o `swordigo-launcher-error.<pid>.log` mais novo.
+Relato útil traz o modelo do aparelho, o firmware e a versão, mais
+`log.txt`, `log.prev.txt` e `nxextract.log` da pasta `swordigo/`.
 
 ### Instalar
 
@@ -260,8 +247,8 @@ exatamente isso no `nxextract.log`.
 | LB | equipar magia |
 | RB | voltar |
 | START | pausa / menu |
-| Analógico direito | cursor na tela |
-| R3 | clique do cursor (toque) |
+| Analógico direito | cursor suave na tela |
+| R2 ou R3 | pressionar / arrastar / soltar o cursor (toque) |
 | SELECT + START | sair |
 
 Em vários portáteis SELECT, START, L3 e R3 chegam como
@@ -276,15 +263,17 @@ Nível de evidência, nunca promessa:
 |---|---|
 | R36S / classe ArkOS (RK3326, Mali-G31, glibc 2.30, 640×480) | **validado fisicamente** — instalação limpa a partir do próprio ZIP, extração no aparelho, título, gameplay, áudio e música, atalho de saída, frontend restaurado |
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **validado fisicamente** |
+| X5M / NextOS (Amlogic, Mali-G310, KMSDRM, 1920×1080) | **validado fisicamente** — vídeo, áudio, música, controles e cursor R2/R3 com pressionar/arrastar/soltar |
 | Outros CFW AArch64 com SDL2, OpenAL e GLES 1.1 | plausível, **não testado** |
 
-Essas linhas registram releases aceitas anteriormente. A candidata v1.0.8 tem
-por enquanto somente validação de host/build/pacote; instalação limpa,
-extração e gameplay ainda exigem testes físicos.
+Essas linhas registram releases aceitas anteriormente. A v1.0.11 passa
+primeiro pelos gates de host/build/pacote; o resultado no alvo atual da
+correção ArkOS só é registrado depois de um teste físico limpo.
 
-O executável público é auditado com teto de `GLIBC_2.27` e depende apenas de
-`libSDL2`, `libGLESv1_CM`, `libEGL`, `libopenal`, `libmpg123`, `libz` e a libc
-do firmware. Nenhum backend SDL de vídeo ou áudio é forçado.
+O executável público é auditado com teto de `GLIBC_2.27`. O release empacota
+somente uma `libmpg123.so.0` fixada e de glibc baixa; SDL2, GLES/EGL, OpenAL,
+zlib e libc continuam vindo do firmware/PortMaster. Nenhum backend SDL de
+vídeo ou áudio é forçado.
 
 ### Arquitetura
 
@@ -296,38 +285,25 @@ fica ancorado num pad thread-local porque o jogo o lê do slot TLS do bionic.
 As notas completas de engenharia reversa estão em `STUDY.md`.
 
 O pacote público tem uma única cadeia de lançamento:
-`Swordigo.sh → swordigo/nxbootstrap-0.5.1.sh →
-swordigo/swordigo-nextos-v108`. Não existe `run.sh` intermediário. O launcher
-fixa o bootstrap versionado por versão, SHA-256 e pelo receipt estático
-`nxdeployment.json`. O NXExtract 1.2.6 roda como fase isolada em foreground; a
-política OpenAL específica do jogo fica no adapter do loader, não no bootstrap
-genérico.
-
-A v1.0.8 também inclui aliases regulares `swordigo-nextos` e `swordigo` byte a
-byte idênticos, além da cópia compatível `nxbootstrap.sh`, idêntica ao bootstrap
-versionado. Assim o overlay continua seguro se o firmware preservar launcher
-da v1.0.4-v1.0.7. O launcher atual nunca escolhe esses nomes compatíveis, e os
-três ELFs passam pelos mesmos gates AArch64 e de glibc baixa.
+`Swordigo.sh → swordigo/swordigo-nextos`. A lógica gerada do nxbootstrap 0.6.1
+fica autocontida no launcher visível; não existe `run.sh` nem biblioteca de
+bootstrap intermediária. O NXExtract 1.2.6 roda como fase isolada em
+foreground antes do gate dos dados. As políticas OpenAL e gráficas específicas
+do jogo ficam no adapter do loader.
 
 O ZIP é montado da allowlist explícita `nxrelease.json` pelo NXRelease 0.2.5
 fixado por conteúdo. O inventário, manifesto de hashes, auditoria ELF e SBOM
 embutidos em `swordigo/.nxrelease/` permitem verificar depois do empacotamento
 a cadeia de launcher, dependências e pins exatos.
 
-Falhas anteriores à abertura do log do runtime viram
-`swordigo-launcher-error.<pid>.log`, com fase, deployment e identidade esperada
-do bootstrap. Depois da entrada no runtime, o `debug.log` registra deployment,
-bootstrap resolvido e fases explícitas. Receipt presente sem log novo mostra
-somente que os arquivos do deployment existem; não prova que o frontend chamou
-o launcher nem que algum destino de log continuou gravável.
-
-Antes de a SDL abrir o display, a integração obrigatória do PortMaster falha de
-forma fechada se a camada de controle não inicializar. Um `PM_PIPE` ativo só é
-aceito como FIFO vivo e não-symlink; a API oficial precisa remover exatamente
-aquele diálogo ou o lançamento para com diagnóstico. O bootstrap não escolhe
-correção pelo nome do firmware nem mata processo alheio. No KMSDRM, o adapter
-drena a fila GLES antes do swap; a correção de alpha preserva e restaura
-exatamente framebuffer, máscara de cor, clear color e scissor do jogo.
+O launcher move o log anterior para `log.prev.txt` e grava a tentativa atual em
+`log.txt`. O loader registra fases explícitas do ciclo nativo; um sinal fatal
+inclui fase e offsets PC/LR do guest, sem tentar continuar depois da falha. A
+correção gráfica é guiada por capacidade: um provider só é trocado quando o
+alternativo combina com o transporte ativo, exporta os símbolos obrigatórios
+e inicializa EGL contra o kernel real. No KMSDRM, o adapter drena a fila GLES
+antes do swap; a correção de alpha preserva e restaura framebuffer, máscara de
+cor, clear color e scissor.
 
 O recibo sanitizado da v1.0.5 está no registro-fonte
 [`references/v1.0.5-multi-device-acceptance.json`](https://github.com/NextOs-Ports/swordigo-nextos/blob/v1.0.5/references/v1.0.5-multi-device-acceptance.json).
@@ -337,13 +313,14 @@ confirmação no aparelho dArkOSRE do relato original continua pendente.
 ### Construir
 
 ```sh
-./build_universal.sh          # -> swordigo-nextos-v108
+./build_universal.sh          # -> swordigo-nextos
 package/build-package.sh      # zip público BYO-data
 ```
 
 A build cruzada roda num container Debian Buster para manter o teto de glibc;
-SDL2, OpenAL, mpg123, GLES1 e EGL entram só como stubs de SONAME, porque quem
-fornece essas bibliotecas é o firmware. A receita e o NXRelease rejeitam
+SDL2, OpenAL e mpg123 entram por stubs de SONAME estáveis. O release fornece o
+build fixado do mpg123, enquanto os providers do aparelho vêm do firmware. A
+receita e o NXRelease rejeitam
 `RPATH`/`RUNPATH`; o empacotador repete os testes do launcher e recusa o ZIP se
 qualquer ELF Linux divergir da arquitetura, dependências ou perfil de glibc
 baixa declarados. Repetir a build do mesmo manifesto produz bytes idênticos.

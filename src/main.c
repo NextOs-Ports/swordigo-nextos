@@ -6,6 +6,7 @@
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
+#include <math.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -19,6 +20,8 @@
 #include <GLES/gl.h>
 #include <SDL2/SDL.h>
 
+#include "crash_diag.h"
+#include "contract.h"
 #include "error.h"
 #include "imports.h"
 #include "jni_fake.h"
@@ -65,6 +68,8 @@ static volatile int g_running = 1;
 static double g_time;
 static int debug_control_enabled;
 static int g_finish_before_swap;
+static int g_fullscreen_desktop;
+static int g_opaque_backbuffer;
 
 typedef void (*GlBindFramebufferOesFn)(GLenum target, GLuint framebuffer);
 static GlBindFramebufferOesFn g_bind_framebuffer_oes;
@@ -320,10 +325,38 @@ static void emit_touch(int phase, int id, float x, float y);
 
 /* Right-stick cursor (LEGO pattern): view coords, Y bottom-origin like touches. */
 static float g_cursor_x = -1.0f, g_cursor_y = -1.0f;
-static int g_cursor_show;
-static int g_cursor_r3_prev;
+static float g_cursor_vx, g_cursor_vy;
+static float g_cursor_show;
+static int g_cursor_click_prev;
+static int g_cursor_r2_prev;
 static int g_cursor_touch_hold;
 static float g_cursor_tx, g_cursor_ty;
+static int g_raw_click_layout_logged;
+
+/* A common 12-button USB pad reports both triggers and stick clicks as plain
+ * joystick buttons.  Older SDL controller databases expose its sticks but
+ * omit those four digital bindings.  Recognize the capability/layout instead
+ * of a firmware or screen size: b7=R2 and b11=R3 on this standard mapping. */
+static int generic_usb_digital_clicks(int *r2, int *r3) {
+  if (!g_pad)
+    return 0;
+  SDL_Joystick *joy = SDL_GameControllerGetJoystick(g_pad);
+  if (!joy || SDL_JoystickNumButtons(joy) != 12 ||
+      SDL_JoystickNumAxes(joy) != 4)
+    return 0;
+  const char *name = SDL_JoystickName(joy);
+  if (!name || (!strstr(name, "USB Gamepad") &&
+                !strstr(name, "USB gamepad") &&
+                !strstr(name, "Usb Gamepad")))
+    return 0;
+  *r2 = SDL_JoystickGetButton(joy, 7) != 0;
+  *r3 = SDL_JoystickGetButton(joy, 11) != 0;
+  if (!g_raw_click_layout_logged) {
+    debugPrintf("pad: digital R2/R3 fallback active for %s\n", name);
+    g_raw_click_layout_logged = 1;
+  }
+  return 1;
+}
 
 static void cursor_ensure(void) {
   if (g_cursor_x < 0.0f) {
@@ -469,68 +502,106 @@ static void cursor_draw_overlay(void) {
   glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
-static void update_cursor(void) {
+static void update_cursor(float dt) {
   cursor_ensure();
-  int want_tap = 0;
-  float wx = 0.0f, wy = 0.0f;
+  float target_vx = 0.0f;
+  float target_vy = 0.0f;
+  int stick_active = 0;
 
   if (g_pad) {
     const float scale = 1.0f / 32767.0f;
-    int raw_rx = SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_RIGHTX);
-    int raw_ry = SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_RIGHTY);
-    const int CURSOR_DZ = 12000;
-    if (abs(raw_rx) > CURSOR_DZ || abs(raw_ry) > CURSOR_DZ) {
-      const float speed = 14.0f;
-      if (abs(raw_rx) > CURSOR_DZ)
-        g_cursor_x += (float)raw_rx * scale * speed;
+    const float deadzone = 0.27f;
+    float rx = (float)SDL_GameControllerGetAxis(
+                   g_pad, SDL_CONTROLLER_AXIS_RIGHTX) * scale;
+    float ry = (float)SDL_GameControllerGetAxis(
+                   g_pad, SDL_CONTROLLER_AXIS_RIGHTY) * scale;
+    float magnitude = sqrtf(rx * rx + ry * ry);
+    if (magnitude > deadzone) {
+      float strength = (magnitude - deadzone) / (1.0f - deadzone);
+      if (strength > 1.0f)
+        strength = 1.0f;
+      /* Progressive response: precise near the deadzone, fast at the edge. */
+      float response = strength * (0.35f + 0.65f * strength);
+      float shortest_side = screen_width < screen_height
+                                ? (float)screen_width
+                                : (float)screen_height;
+      float speed = shortest_side * 1.2f * response;
+      target_vx = rx / magnitude * speed;
       /* SDL Y+: down; view Y+: up — invert. */
-      if (abs(raw_ry) > CURSOR_DZ)
-        g_cursor_y -= (float)raw_ry * scale * speed;
-      if (g_cursor_x < 0.0f)
-        g_cursor_x = 0.0f;
-      else if (g_cursor_x > (float)screen_width)
-        g_cursor_x = (float)screen_width;
-      if (g_cursor_y < 0.0f)
-        g_cursor_y = 0.0f;
-      else if (g_cursor_y > (float)screen_height)
-        g_cursor_y = (float)screen_height;
-      g_cursor_show = 120;
-    } else if (g_cursor_show > 0) {
-      g_cursor_show--;
+      target_vy = -ry / magnitude * speed;
+      stick_active = 1;
+      g_cursor_show = 2.0f;
     }
-  } else if (g_cursor_show > 0) {
-    g_cursor_show--;
   }
 
-  /* R3 is the finger, not a click pulse: press = touch down at the cursor,
+  /* First-order smoothing is stable across 30/60/120 Hz and naturally eases
+   * to rest when the stick returns to center. */
+  float smoothing = dt / (0.045f + dt);
+  g_cursor_vx += (target_vx - g_cursor_vx) * smoothing;
+  g_cursor_vy += (target_vy - g_cursor_vy) * smoothing;
+  g_cursor_x += g_cursor_vx * dt;
+  g_cursor_y += g_cursor_vy * dt;
+  if (g_cursor_x < 0.0f) {
+    g_cursor_x = 0.0f;
+    if (g_cursor_vx < 0.0f)
+      g_cursor_vx = 0.0f;
+  } else if (g_cursor_x > (float)screen_width) {
+    g_cursor_x = (float)screen_width;
+    if (g_cursor_vx > 0.0f)
+      g_cursor_vx = 0.0f;
+  }
+  if (g_cursor_y < 0.0f) {
+    g_cursor_y = 0.0f;
+    if (g_cursor_vy < 0.0f)
+      g_cursor_vy = 0.0f;
+  } else if (g_cursor_y > (float)screen_height) {
+    g_cursor_y = (float)screen_height;
+    if (g_cursor_vy > 0.0f)
+      g_cursor_vy = 0.0f;
+  }
+  if (!stick_active && g_cursor_show > 0.0f) {
+    g_cursor_show -= dt;
+    if (g_cursor_show < 0.0f)
+      g_cursor_show = 0.0f;
+  }
+
+  /* R3 or R2 is the finger, not a click pulse: press = touch down at the cursor,
    * keep holding while moving the right stick = drag (this is what enchanting
    * the sword with a talisman needs), release = touch up.  A quick press and
    * release still reads as a tap. */
   int r3 = g_pad &&
            SDL_GameControllerGetButton(g_pad, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
-  (void)want_tap;
-  (void)wx;
-  (void)wy;
-  if (r3 && !g_cursor_r3_prev) {
+  int r2 = g_pad && SDL_GameControllerGetAxis(
+                           g_pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) >
+                       (g_cursor_r2_prev ? 10000 : 16000);
+  int raw_r2 = 0, raw_r3 = 0;
+  generic_usb_digital_clicks(&raw_r2, &raw_r3);
+  r2 = r2 || raw_r2;
+  r3 = r3 || raw_r3;
+  int click = r3 || r2;
+  if (click && !g_cursor_click_prev) {
     g_cursor_tx = g_cursor_x;
     g_cursor_ty = g_cursor_y;
     emit_touch(TOUCH_BEGAN, 9, g_cursor_tx, g_cursor_ty);
     g_cursor_touch_hold = 1;
-    g_cursor_show = 60;
-    debugPrintf("cursor: R3 down (%.0f,%.0f)\n", g_cursor_tx, g_cursor_ty);
-  } else if (r3 && g_cursor_touch_hold) {
+    g_cursor_show = 2.0f;
+    debugPrintf("cursor: %s down (%.0f,%.0f)\n", r3 ? "R3" : "R2",
+                g_cursor_tx, g_cursor_ty);
+  } else if (click && g_cursor_touch_hold) {
     g_cursor_tx = g_cursor_x;
     g_cursor_ty = g_cursor_y;
     emit_touch(TOUCH_MOVED, 9, g_cursor_tx, g_cursor_ty);
-    g_cursor_show = 60;
-  } else if (!r3 && g_cursor_r3_prev && g_cursor_touch_hold) {
+    g_cursor_show = 2.0f;
+  } else if (!click && g_cursor_click_prev && g_cursor_touch_hold) {
     g_cursor_tx = g_cursor_x;
     g_cursor_ty = g_cursor_y;
     emit_touch(TOUCH_ENDED, 9, g_cursor_tx, g_cursor_ty);
     g_cursor_touch_hold = 0;
-    debugPrintf("cursor: R3 up (%.0f,%.0f)\n", g_cursor_tx, g_cursor_ty);
+    debugPrintf("cursor: click up (%.0f,%.0f)\n", g_cursor_tx,
+                g_cursor_ty);
   }
-  g_cursor_r3_prev = r3;
+  g_cursor_r2_prev = r2;
+  g_cursor_click_prev = click;
 }
 
 static void ctrl_point(int flags, float ax, float ay, float *x, float *y) {
@@ -748,7 +819,9 @@ static void resolve_present_functions(void) {
 }
 
 static int finish_before_swap_policy(const char *video_driver) {
-  int automatic = video_driver && strcmp(video_driver, "KMSDRM") == 0;
+  int automatic = swordigo_contract_quirk_enabled(
+                      "game.swordigo.present-finish") &&
+                  video_driver && strcmp(video_driver, "KMSDRM") == 0;
   const char *override = getenv("SWORDIGO_GLFINISH");
   if (!override)
     return automatic;
@@ -804,7 +877,10 @@ static int gl_init(void) {
    * a config without alpha makes the game's alpha irrelevant to the scanout;
    * present_opaque_alpha() below covers the firmwares that hand out an alpha
    * config anyway (these attributes are minimums, not exact matches). */
-  SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+  /* The approved KMSDRM ports probe RGBA first.  Some vendor EGL stacks only
+   * finish their first window negotiation on that request; if it is refused,
+   * retry the same desktop mode with RGBX before considering a modeset. */
+  SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
   SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -817,12 +893,49 @@ static int gl_init(void) {
    * Prizefighters 2, Hitman GO, Geometry Dash).  The escape hatch stays for a
    * device that genuinely wants the modeset. */
   const char *exclusive = getenv("SWORDIGO_EXCLUSIVE_FULLSCREEN");
-  Uint32 fullscreen = (exclusive && *exclusive == '1')
-                          ? SDL_WINDOW_FULLSCREEN
-                          : SDL_WINDOW_FULLSCREEN_DESKTOP;
+  Uint32 fullscreen = g_fullscreen_desktop
+                          ? SDL_WINDOW_FULLSCREEN_DESKTOP
+                          : SDL_WINDOW_FULLSCREEN;
+  if (exclusive && exclusive[0] == '1')
+    fullscreen = SDL_WINDOW_FULLSCREEN;
   g_win = SDL_CreateWindow("Swordigo", SDL_WINDOWPOS_UNDEFINED,
                            SDL_WINDOWPOS_UNDEFINED, screen_width, screen_height,
                            SDL_WINDOW_OPENGL | fullscreen);
+  if (!g_win && fullscreen == SDL_WINDOW_FULLSCREEN_DESKTOP) {
+    debugPrintf("gl: RGBA GLES1 desktop window refused (%s); "
+                "probing SDL-owned GLES2 backend\n", SDL_GetError());
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+    SDL_Window *probe = SDL_CreateWindow(
+        "Swordigo GL probe", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+        screen_width, screen_height,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
+    if (!probe) {
+      SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+      probe = SDL_CreateWindow(
+          "Swordigo GL probe", SDL_WINDOWPOS_UNDEFINED,
+          SDL_WINDOWPOS_UNDEFINED, screen_width, screen_height,
+          SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
+    }
+    if (probe) {
+      SDL_GLContext probe_context = SDL_GL_CreateContext(probe);
+      if (probe_context)
+        SDL_GL_DeleteContext(probe_context);
+      SDL_DestroyWindow(probe);
+      debugPrintf("gl: SDL GLES2 capability probe completed\n");
+    } else {
+      debugPrintf("gl: SDL GLES2 capability probe refused (%s)\n",
+                  SDL_GetError());
+    }
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+    g_win = SDL_CreateWindow("Swordigo", SDL_WINDOWPOS_UNDEFINED,
+                             SDL_WINDOWPOS_UNDEFINED, screen_width,
+                             screen_height,
+                             SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
+  }
   if (!g_win && fullscreen == SDL_WINDOW_FULLSCREEN_DESKTOP) {
     debugPrintf("gl: fullscreen-desktop refused (%s); retrying exclusive\n",
                 SDL_GetError());
@@ -837,13 +950,17 @@ static int gl_init(void) {
      * driver (user/kernel API mismatch) and no window ever exists.  Probe
      * for a provider that initializes on this kernel and re-exec once with
      * it preloaded; returns untouched when no candidate proves itself. */
-    glfix_maybe_reexec_noctx("window creation failed", glfix_video_teardown);
+    glfix_maybe_reexec_noctx("window creation failed",
+                             SDL_GetCurrentVideoDriver(),
+                             glfix_video_teardown);
     return -1;
   }
   g_ctx = SDL_GL_CreateContext(g_win);
   if (!g_ctx) {
     fprintf(stderr, "SDL_GL_CreateContext: %s\n", SDL_GetError());
-    glfix_maybe_reexec_noctx("context creation failed", glfix_video_teardown);
+    glfix_maybe_reexec_noctx("context creation failed",
+                             SDL_GetCurrentVideoDriver(),
+                             glfix_video_teardown);
     return -1;
   }
   if (SDL_GL_MakeCurrent(g_win, g_ctx) != 0) {
@@ -874,12 +991,13 @@ static int gl_init(void) {
    * the firmware actually granted (alpha above all) and the GL blob in use. */
   const GLubyte *renderer = glGetString(GL_RENDERER);
   const GLubyte *version = glGetString(GL_VERSION);
+  const char *video_driver = SDL_GetCurrentVideoDriver();
   /* Crossed-SONAME firmware (Mesa behind libGLESv1_CM.so.1, Mali blob behind
    * the unversioned name) yields a context with an empty renderer that draws
    * nothing.  Repair by re-exec with the blob preloaded; healthy stacks
    * (including Panfrost, which reports a renderer) are never touched. */
-  glfix_maybe_reexec((const char *)renderer, glfix_video_teardown);
-  const char *video_driver = SDL_GetCurrentVideoDriver();
+  glfix_maybe_reexec((const char *)renderer, video_driver,
+                     glfix_video_teardown);
   g_finish_before_swap = finish_before_swap_policy(video_driver);
   debugPrintf("gl: GLES1.1 %dx%d alpha=%d depth=%d driver='%s'\n", screen_width,
               screen_height, got_alpha, got_depth,
@@ -986,6 +1104,8 @@ static void probe_frame_once(int width, int height) {
 static void present_opaque_alpha(void) {
   static int logged = 0;
   PresentState state;
+  if (!g_opaque_backbuffer)
+    return;
   snapshot_present_state(&state);
   if (state.scissor_enabled)
     glDisable(GL_SCISSOR_TEST);
@@ -1028,7 +1148,21 @@ int main(int argc, char **argv) {
 
   configure_runtime_environment();
   debug_control_enabled = getenv("SWORDIGO_DEBUG_CONTROL") != NULL;
+  g_fullscreen_desktop = swordigo_contract_quirk_enabled(
+      "game.swordigo.fullscreen-desktop");
+  g_opaque_backbuffer = swordigo_contract_quirk_enabled(
+      "game.swordigo.present-alpha-one");
   debugPrintf("=== swordigo NextOS — data=%s ===\n", data_path);
+  debugPrintf("contract: fullscreen-desktop=%s opaque-backbuffer=%s "
+              "finish=%s glfix-context=%s glfix-pre-context=%s\n",
+              g_fullscreen_desktop ? "yes" : "no",
+              g_opaque_backbuffer ? "yes" : "no",
+              swordigo_contract_quirk_enabled(
+                  "game.swordigo.present-finish") ? "yes" : "no",
+              swordigo_contract_quirk_enabled(
+                  "adapter.gl-provider-reexec-preload") ? "yes" : "no",
+              swordigo_contract_quirk_enabled(
+                  "adapter.gl-provider-probe-init-reexec") ? "yes" : "no");
   check_data();
 
   size_t heap_size = (size_t)MEMORY_MB * 1024 * 1024;
@@ -1039,8 +1173,11 @@ int main(int argc, char **argv) {
 
   if (so_load(SO_NAME, heap, heap_size) < 0)
     fatal_error("so_load(%s) failed", SO_NAME);
+  crash_diag_install((uintptr_t)data_base, data_size);
+  crash_diag_set_phase(CRASH_PHASE_RELOCATE);
   if (so_relocate() < 0)
     fatal_error("so_relocate failed");
+  crash_diag_set_phase(CRASH_PHASE_RESOLVE);
   if (so_resolve(dynlib_functions, dynlib_functions_count, 1) < 0)
     fatal_error("so_resolve failed");
 
@@ -1050,34 +1187,49 @@ int main(int argc, char **argv) {
     install_game_overlay_hooks();
   resolve_entry_points();
 
+  crash_diag_set_phase(CRASH_PHASE_FINALIZE);
   so_finalize();
   so_flush_caches();
   so_record_phdr("libswordigo.so");
 
+  crash_diag_set_phase(CRASH_PHASE_CONSTRUCTORS);
   so_execute_init_array();
   so_free_temp();
+  crash_diag_install((uintptr_t)data_base, data_size);
 
+  crash_diag_set_phase(CRASH_PHASE_GL);
   if (gl_init() < 0)
     fatal_error("GL init failed");
+  crash_diag_install((uintptr_t)data_base, data_size);
+  crash_diag_set_phase(CRASH_PHASE_AUDIO);
   init_openal();
 
+  crash_diag_set_phase(CRASH_PHASE_JNI);
   jni_init();
   jni_configure_text_input(textInputTextDidChange, textInputDidFinish);
 
+  crash_diag_set_phase(CRASH_PHASE_SET_DIRS);
   setFilesDir(fake_env, NULL, jni_make_string(data_path));
   setCacheDir(fake_env, NULL, jni_make_string(data_path));
   setAssetManager(fake_env, NULL, NULL);
   googleSignInCompleted(fake_env, NULL, 0);
+  crash_diag_set_phase(CRASH_PHASE_APP_LAUNCH);
   handleApplicationLaunch(fake_env, NULL);
 
+  crash_diag_set_phase(CRASH_PHASE_MUSIC);
   music_init(data_path);
   initMusicPlayer(fake_env, jni_make_object("MusicPlayer"));
 
+  crash_diag_set_phase(CRASH_PHASE_NATIVE_INTERFACE);
   setupNativeInterface(fake_env, NULL);
+  crash_diag_set_phase(CRASH_PHASE_APP_SETUP);
   setupApplication(fake_env, NULL);
+  crash_diag_set_phase(CRASH_PHASE_VIEW_SIZE);
   setApplicationViewSize(fake_env, NULL, screen_width, screen_height, 1,
                          screen_width, screen_height);
+  crash_diag_set_phase(CRASH_PHASE_APP_ACTIVE);
   applicationDidBecomeActive(fake_env, NULL);
+  crash_diag_install((uintptr_t)data_base, data_size);
 
   debugPrintf("boot complete — entering loop\n");
 
@@ -1088,6 +1240,7 @@ int main(int argc, char **argv) {
 
   Uint32 last = SDL_GetTicks();
   while (g_running) {
+    crash_diag_set_phase(CRASH_PHASE_EVENTS);
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
       if (e.type == SDL_QUIT)
@@ -1121,7 +1274,7 @@ int main(int argc, char **argv) {
           } else if (!strcmp(cmd, "cursor")) {
             g_cursor_x = x;
             g_cursor_y = y;
-            g_cursor_show = 300;
+            g_cursor_show = 5.0f;
             debugPrintf("[ctl] cursor %.0f,%.0f\n", x, y);
           } else if (!strcmp(cmd, "quit")) {
             request_exit();
@@ -1131,29 +1284,43 @@ int main(int argc, char **argv) {
         unlink("/dev/shm/swordigo_ctl");
       }
     }
-    frame++;
-    update_pad();
-    update_cursor();
-    jni_update();
-
     Uint32 now = SDL_GetTicks();
     float dt = (now - last) / 1000.0f;
     last = now;
     if (dt <= 0.0f || dt > 0.1f)
       dt = 1.0f / 60.0f;
+
+    frame++;
+    crash_diag_set_frame((unsigned)frame);
+    crash_diag_set_phase(CRASH_PHASE_CONTROLS);
+    update_pad();
+    update_cursor(dt);
+    crash_diag_set_phase(CRASH_PHASE_JNI_UPDATE);
+    jni_update();
+
     g_time += dt;
 
+    crash_diag_set_phase(CRASH_PHASE_UPDATE);
     updateApplication(fake_env, NULL, dt);
+    crash_diag_set_phase(CRASH_PHASE_DRAW);
     drawApplication(fake_env, NULL);
+    crash_diag_set_phase(CRASH_PHASE_CURSOR);
     cursor_draw_overlay();
+    crash_diag_set_phase(CRASH_PHASE_PRESENT_ALPHA);
     present_opaque_alpha();
-    if (frame == 300)
+    if (frame == 300) {
+      crash_diag_set_phase(CRASH_PHASE_FRAME_PROBE);
       probe_frame_once(screen_width, screen_height);
-    if (g_finish_before_swap)
+    }
+    if (g_finish_before_swap) {
+      crash_diag_set_phase(CRASH_PHASE_FINISH);
       glFinish();
+    }
+    crash_diag_set_phase(CRASH_PHASE_SWAP);
     SDL_GL_SwapWindow(g_win);
   }
 
+  crash_diag_set_phase(CRASH_PHASE_SHUTDOWN);
   pthread_t d;
   if (pthread_create(&d, NULL, exit_deadline, NULL) == 0)
     pthread_detach(d);

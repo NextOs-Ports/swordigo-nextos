@@ -64,7 +64,7 @@
     {
       "id": "adapter.gl-provider-reexec-preload",
       "condition": "graphics: real context created but glGetString(GL_RENDERER) is empty - the versioned GLES/EGL SONAME resolves to a driverless Mesa while a Mali blob with the needed entry points exists behind the unversioned name",
-      "effect": "re-execute the process with LD_PRELOAD pointing at the validated Mali blob (prefer the -gbm variant, require the GLES1 entry points via dlsym, refuse dummy/stub/x11/wayland variants); healthy stacks incl. Panfrost report a renderer and are never touched",
+      "effect": "re-execute the process with LD_PRELOAD pointing at the validated Mali blob (prefer direct GBM/DRM/fbdev transport; reject dummy/stub and compositor-only variants incompatible with the active SDL backend; require GLES1 entry points via dlsym); healthy stacks incl. Panfrost report a renderer and are never touched",
       "evidence": [
         "swordigo"
       ]
@@ -72,7 +72,7 @@
     {
       "id": "adapter.gl-provider-probe-init-reexec",
       "condition": "graphics: the EGL provider the dynamic linker resolved refuses the kernel driver before any window exists (eglInitialize fails, e.g. Mali user/kernel API mismatch such as user 10.6 vs kernel 11.7); the process would otherwise die at GL init with no context to measure",
-      "effect": "after video teardown, probe alternate Mali provider objects by performing a real eglGetDisplay+eglInitialize on each candidate (the loaded provider is excluded; dummy/stub/x11/wayland variants refused); re-execute once with LD_PRELOAD pointing at the first candidate that initializes; if none initializes the original failure is left untouched",
+      "effect": "after video teardown, prefilter alternate Mali provider objects by active SDL transport (hybrid names such as wayland-gbm remain eligible for KMSDRM), then perform real eglGetDisplay+eglInitialize on each candidate; exclude the loaded provider and dummy/stub or incompatible compositor-only variants; re-execute once with LD_PRELOAD pointing at the first candidate that initializes; if none initializes the original failure is left untouched",
       "evidence": [
         "swordigo"
       ]

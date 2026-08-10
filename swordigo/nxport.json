@@ -2,11 +2,13 @@
   "architecture": "aarch64",
   "argument_mode": "game-dir-and-passthrough",
   "enabled_quirks": [
+    "adapter.gl-provider-reexec-preload",
+    "adapter.gl-provider-probe-init-reexec",
     "game.swordigo.present-alpha-one",
     "game.swordigo.fullscreen-desktop",
     "game.swordigo.present-finish"
   ],
-  "executable": "swordigo-nextos-v109",
+  "executable": "swordigo-nextos",
   "home_mode": "port",
   "id": "swordigo",
   "launcher_name": "Swordigo.sh",
@@ -26,7 +28,7 @@
     "input.controller-api"
   ],
   "required_files": [
-    "swordigo-nextos-v109",
+    "swordigo-nextos",
     "libswordigo.so",
     "res/7c.mp3",
     "alsoft.conf"

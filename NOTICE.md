@@ -8,7 +8,10 @@
 - NextOS ports framework contributors
 
 ## Third-party
-- OpenAL Soft, mpg123, SDL2, zlib — system libraries on NextOS
+- mpg123 1.31.3 — bundled under LGPL-2.1-or-later; its license is included in
+  `licenses/mpg123-LGPL-2.1-or-later.txt`
+- OpenAL Soft, SDL2, GLES/EGL and zlib — supplied by the target firmware or
+  PortMaster runtime
 - Boost, Lua, protobuf, OpenAL Soft (Apportable fork) — shipped inside the APK
   (see APK assets/README); not redistributed by this repository
 

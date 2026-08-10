@@ -1,6 +1,42 @@
 # Changelog
 
-## 1.0.10 — 2026-08-10 (test candidate)
+## 1.0.11 — 2026-08-10
+
+- Fixed digital R2/R3 cursor input on 12-button USB gamepads whose older SDL
+  mapping exposes both sticks but omits trigger/stick-click bindings. Press,
+  drag and release remain resolution-independent.
+- Bundled a pinned low-glibc `libmpg123.so.0` so compatible firmwares that
+  omit that SONAME retain music without a device-local workaround.
+- **Fixed the ArkOS AeUX Mali ABI mismatch in nxbootstrap 0.6.1.** The
+  generated AArch64 launcher now preserves the firmware's provider order:
+  PortMaster overlays, `/usr/local`, then `/usr`, followed by the port itself.
+  On the affected image the kernel-matched r13p0 provider is in `/usr/local`,
+  while the old launcher forced the incompatible r6p0 provider from `/usr`
+  (`user 10.6, kernel 11.7`). The rule is capability/path based, not tied to
+  ArkOS, an IP or a device model; systems whose normal provider already works,
+  including the confirmed muOS and DarkOSRe paths, keep that normal path.
+- **Fixed the v1.0.10 fallback provider-classification regression.** A library
+  named `libmali-bifrost-g31-rxp0-wayland-gbm.so` is not Wayland-only: it
+  exposes the GBM transport needed by SDL KMSDRM. Provider filtering now uses
+  the active SDL transport and keeps hybrid GBM/DRM/fbdev candidates. Filename
+  classification remains only a prefilter; symbols and a real
+  `eglInitialize` against the live kernel are still mandatory before the
+  one-shot preload re-exec.
+- Added the same transport-aware, side-effect-free classifier to NXGL 0.2.1,
+  with an exact regression test for the AeUX filename. Existing ports do not
+  opt into provider replacement automatically.
+- Added a bounded crash report for ROCKNIX-class post-boot faults. It records
+  the native phase, frame, fault address, AArch64 PC/LR/SP and offsets inside
+  `libswordigo.so`, then exits with the original `128+signal` status. It never
+  skips a lifecycle step or attempts signal recovery.
+- The right-stick cursor now uses a radial deadzone, progressive response,
+  time-based movement and smoothing. **R2 and R3** both provide press/drag/
+  release touch input; the original D-pad and gameplay buttons are unchanged.
+- Restored the stable public executable identity `swordigo-nextos` and bumped
+  the package to 1.0.11. The public AArch64 build remains gated at
+  `GLIBC_2.30` or lower.
+
+## 1.0.10 — 2026-08-10 (failed test candidate; superseded)
 
 - **"GL init failed" on ArkOS AeUX-class firmwares repaired in the loader
   (glfix mode 2).** Field log: the EGL provider the dynamic linker resolves
@@ -11,7 +47,9 @@
   pre-context failure, tears the display down, and probes the system's other
   Mali provider objects with a **real `eglGetDisplay` + `eglInitialize`
   against the live kernel** (the already-loaded, failing provider is
-  excluded; `dummy`/`stub`/`x11`/`wayland` variants refused). The first
+  excluded; `dummy`/`stub`/`x11`/`wayland` variants refused). That blanket
+  filename rejection was incorrect for hybrid `wayland-gbm` providers and
+  caused the AeUX repair to skip the exact usable candidate. The first
   candidate that initializes earns a single re-exec with `LD_PRELOAD`; if
   none initializes, the original failure is reported untouched. Devices that
   boot today never reach the new path. Controls unchanged:

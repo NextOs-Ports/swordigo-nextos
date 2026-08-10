@@ -1,11 +1,53 @@
 #!/usr/bin/env bash
-# Host-only contract for the 0.6.0 single self-contained launcher.
+# Host-only contract for the current single self-contained launcher.
 # No game, no SDL, no device.
 set -euo pipefail
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+GENERATOR=${NXBOOTSTRAP_GENERATOR:-$ROOT/../nextos_ports_android/framework/nxbootstrap/tools/generate-port.py}
 
 fail() { printf 'launcher test: %s\n' "$*" >&2; exit 1; }
+
+POLICY_TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/swordigo-policy-test.XXXXXX")
+cleanup() {
+  case $POLICY_TEST_DIR in
+    "${TMPDIR:-/tmp}"/swordigo-policy-test.*)
+      rm -rf -- "$POLICY_TEST_DIR"
+      ;;
+    *) fail "unsafe provider-policy test directory: $POLICY_TEST_DIR" ;;
+  esac
+}
+trap cleanup EXIT INT TERM
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -I"$ROOT/src" \
+  "$ROOT/tests/test_gl_provider_policy.c" \
+  "$ROOT/src/gl_provider_policy.c" \
+  -o "$POLICY_TEST_DIR/test-gl-provider-policy"
+"$POLICY_TEST_DIR/test-gl-provider-policy"
+"${CC:-cc}" -std=c11 -Wall -Wextra -Werror -I"$ROOT/src" \
+  "$ROOT/tests/test_crash_diag.c" \
+  "$ROOT/src/crash_diag.c" \
+  -o "$POLICY_TEST_DIR/test-crash-diag"
+"$POLICY_TEST_DIR/test-crash-diag"
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -I"$ROOT/src" \
+  "$ROOT/tests/test_contract.c" \
+  "$ROOT/src/contract.c" \
+  -o "$POLICY_TEST_DIR/test-contract"
+"$POLICY_TEST_DIR/test-contract"
+
+# The checked-in launcher is generated output, never a hand-maintained fork.
+[[ -f $GENERATOR && ! -L $GENERATOR ]] ||
+  fail "canonical nxbootstrap generator is missing or linked: $GENERATOR"
+GENERATOR_ROOT=$(CDPATH= cd -- "$(dirname -- "$GENERATOR")/.." && pwd -P)
+NXBOOTSTRAP_VERSION=$(cat "$GENERATOR_ROOT/VERSION")
+[ -n "$NXBOOTSTRAP_VERSION" ] || fail 'canonical nxbootstrap version is empty'
+mkdir -p "$POLICY_TEST_DIR/generated"
+python3 -B "$GENERATOR" "$ROOT/swordigo/nxport.json" \
+  --output "$POLICY_TEST_DIR/generated" >/dev/null
+cmp -s "$ROOT/Swordigo.sh" "$POLICY_TEST_DIR/generated/Swordigo.sh" ||
+  fail "launcher diverges from canonical nxbootstrap $NXBOOTSTRAP_VERSION output"
+cmp -s "$ROOT/swordigo/nxport.json" \
+  "$POLICY_TEST_DIR/generated/swordigo/nxport.json" ||
+  fail 'nxport.json is not in canonical generated form'
 
 LAUNCHER=$ROOT/Swordigo.sh
 bash -n "$LAUNCHER" || fail 'entry script is not valid Bash'
@@ -13,24 +55,45 @@ bash -n "$LAUNCHER" || fail 'entry script is not valid Bash'
   fail 'launcher does not use the portable /bin/bash interpreter'
 grep -Fq '# PORTMASTER: swordigo, Swordigo.sh' "$LAUNCHER" ||
   fail 'launcher lacks its PORTMASTER identity'
-grep -Fq 'nxbootstrap 0.6.0' "$LAUNCHER" ||
+grep -Fq "nxbootstrap $NXBOOTSTRAP_VERSION" "$LAUNCHER" ||
   fail 'launcher does not record its generator version'
 
-# Golden-port guarantees of the 0.6.0 shape.
+# Golden-port guarantees of the current generated shape.
 for needle in \
   'source "$controlfolder/control.txt"' \
   'get_controls' \
   'GAMEDIR="/$directory/ports/swordigo"' \
   'flock -n 9' \
-  'trap - INT TERM HUP' \
+  'NXBOOTSTRAP_CHILD_STARTTIME' \
+  'nxbootstrap_child_alive' \
+  'nxbootstrap_finish' \
+  '9>&- &' \
   'wait "$game_pid"' \
   "printf '\\033c'" \
   'pm_platform_helper' \
   'pm_finish' \
-  'swordigo-nextos-v109'
+  'swordigo-nextos'
 do
   grep -Fq "$needle" "$LAUNCHER" || fail "launcher lacks canonical line: $needle"
 done
+grep -Fq 'adapter.gl-provider-reexec-preload' "$LAUNCHER" ||
+  fail 'launcher lost the post-context provider repair contract'
+grep -Fq 'adapter.gl-provider-probe-init-reexec' "$LAUNCHER" ||
+  fail 'launcher lost the pre-context provider repair contract'
+if ! python3 - "$LAUNCHER" <<'PY'
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+portmaster = text.index('"$controlfolder/libs.aarch64"')
+local = text.index('/usr/local/lib/aarch64-linux-gnu', portmaster)
+system = text.index('/usr/lib/aarch64-linux-gnu', local)
+game = text.index('$GAMEDIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}', system)
+assert portmaster < local < system < game
+PY
+then
+  fail 'launcher lost firmware-local library precedence'
+fi
 grep -Eq '@[A-Z0-9_]+@' "$LAUNCHER" && fail 'launcher has unresolved tokens' || true
 
 # Retired layers must stay retired.
@@ -47,7 +110,7 @@ if grep -qE '^[^#]*export[[:space:]]+SDL_(VIDEODRIVER|AUDIODRIVER)=' \
   fail 'launcher forces an SDL video or audio driver'
 fi
 
-LOADER=$ROOT/swordigo-nextos-v109
+LOADER=$ROOT/swordigo-nextos
 [ -f "$LOADER" ] && [ ! -L "$LOADER" ] && [ -x "$LOADER" ] ||
   fail 'public loader is missing, linked or not executable'
 LC_ALL=C readelf -hW "$LOADER" | grep -q 'Machine:.*AArch64' ||
@@ -72,6 +135,8 @@ LC_ALL=C strings "$LOADER" | grep 'SWORDIGO_GLFIX' >/dev/null ||
   fail 'loader lost the glfix provider repair'
 grep -q 'glfix_maybe_reexec' "$ROOT/src/main.c" ||
   fail 'loader source no longer calls the glfix repair'
+grep -q 'swordigo_contract_quirk_enabled' "$ROOT/src/glfix.c" ||
+  fail 'provider repair is no longer controlled by the manifest contract'
 
 grep -qE '^\s*drivers\s*=\s*pipewire,pulse,alsa\s*$' "$ROOT/alsoft.conf" ||
   fail 'alsoft.conf does not preserve the approved backend order'

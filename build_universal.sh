@@ -3,17 +3,21 @@
 #
 # The Debian Buster cross toolchain keeps the executable below GLIBC_2.30, so
 # the same binary runs on ArkOS/ROCKNIX/muOS-class handhelds and on the current
-# NextOS image.  SDL2, OpenAL, mpg123, GLES1 and EGL are supplied by the target
-# firmware: they are linked through link-only stubs that carry nothing but the
-# stable SONAME, so no host library version leaks into the result.
+# NextOS image.  SDL2, OpenAL, GLES1 and EGL are supplied by the target
+# firmware.  mpg123 is built from its pinned LGPL source and bundled because
+# not every otherwise-compatible firmware provides its SONAME.
 #
 # Recipe proven by the published Prizefighters 2 universal port.
 set -euo pipefail
 
 PORT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-OUTPUT=${SWORDIGO_UNIVERSAL_OUTPUT:-swordigo-nextos-v109}
+OUTPUT=${SWORDIGO_UNIVERSAL_OUTPUT:-swordigo-nextos}
 BUILDER_IMAGE=playfetch-builder:buster
 BUILDER_IMAGE_ID=sha256:036c7910ea53bc78cc213452afa92fa83d55de1c51ae54f315af58b5a41a45cf
+MPG123_VERSION=1.31.3
+MPG123_ARCHIVE="mpg123-${MPG123_VERSION}.tar.bz2"
+MPG123_URL="https://downloads.sourceforge.net/sourceforge/mpg123/${MPG123_ARCHIVE}"
+MPG123_SHA256=1ca77d3a69a5ff845b7a0536f783fee554e1041139a6b978f6afe14f5814ad1a
 export LC_ALL=C
 export TZ=UTC
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1786233600}
@@ -46,6 +50,22 @@ if [ "${SWORDIGO_BUSTER_IN_CONTAINER:-0}" != "1" ]; then
     exit 1
   }
 
+  mkdir -p "$PORT_DIR/.build/distfiles"
+  MPG123_DISTFILE="$PORT_DIR/.build/distfiles/$MPG123_ARCHIVE"
+  if [ ! -f "$MPG123_DISTFILE" ]; then
+    command -v curl >/dev/null 2>&1 || {
+      echo "curl is required to fetch the pinned mpg123 source" >&2
+      exit 1
+    }
+    curl --fail --location --retry 3 --output "$MPG123_DISTFILE" \
+      "$MPG123_URL"
+  fi
+  printf '%s  %s\n' "$MPG123_SHA256" "$MPG123_DISTFILE" |
+    sha256sum --check --status || {
+      echo "mpg123 source hash mismatch: $MPG123_DISTFILE" >&2
+      exit 1
+    }
+
   ACTUAL_IMAGE_ID=$(docker image inspect "$BUILDER_IMAGE" \
     --format '{{.Id}}' 2>/dev/null) || {
       echo "pinned offline builder image is missing: $BUILDER_IMAGE" >&2
@@ -72,7 +92,7 @@ CC=aarch64-linux-gnu-gcc
 NM=aarch64-linux-gnu-nm
 READELF=aarch64-linux-gnu-readelf
 STRIP=aarch64-linux-gnu-strip
-for tool in "$CC" "$NM" "$READELF" "$STRIP" file strings; do
+for tool in "$CC" "$NM" "$READELF" "$STRIP" file strings make tar sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "missing pinned-builder tool: $tool" >&2
     exit 1
@@ -88,9 +108,47 @@ OBJDIR=$(mktemp -d)
 STUBDIR=$(mktemp -d)
 trap 'rm -rf "$OBJDIR" "$STUBDIR"' EXIT
 
+MPG123_DISTFILE="/repo/.build/distfiles/$MPG123_ARCHIVE"
+printf '%s  %s\n' "$MPG123_SHA256" "$MPG123_DISTFILE" |
+  sha256sum --check --status || {
+    echo "pinned mpg123 source is missing or corrupt" >&2
+    exit 1
+  }
+tar -xjf "$MPG123_DISTFILE" -C "$OBJDIR"
+MPG123_SOURCE="$OBJDIR/mpg123-$MPG123_VERSION"
+[ -x "$MPG123_SOURCE/configure" ] || {
+  echo "unexpected mpg123 source layout" >&2
+  exit 1
+}
+find "$MPG123_SOURCE" -exec touch -d '@1700000000' {} +
+(
+  cd "$MPG123_SOURCE"
+  CFLAGS="-O2 -ffile-prefix-map=$MPG123_SOURCE=. -fdebug-prefix-map=$MPG123_SOURCE=." \
+  LDFLAGS="-Wl,--build-id=sha1" \
+  ./configure --host=aarch64-linux-gnu --prefix=/usr \
+    --enable-shared --disable-static --enable-network=no \
+    --enable-modules=no --with-cpu=aarch64 >/dev/null
+  make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)" >/dev/null
+)
+MPG123_LIBRARY=$(find "$MPG123_SOURCE" -type f \
+  -name 'libmpg123.so.0.*' -print | sort | head -1)
+[ -n "$MPG123_LIBRARY" ] || {
+  echo "mpg123 shared library was not produced" >&2
+  exit 1
+}
+"$STRIP" --strip-debug "$MPG123_LIBRARY"
+cp -L "$MPG123_LIBRARY" /repo/libmpg123.so.0
+chmod 0755 /repo/libmpg123.so.0
+cp "$MPG123_SOURCE/COPYING" /repo/licenses/mpg123-LGPL-2.1-or-later.txt
+chmod 0644 /repo/licenses/mpg123-LGPL-2.1-or-later.txt
+
 SOURCES=(
   src/main.c
+  src/contract.c
+  src/crash_diag.c
   src/glfix.c
+  src/gl_latebind.c
+  src/gl_provider_policy.c
   src/imports.c
   src/jni_fake.c
   src/music_player.c
@@ -103,16 +161,16 @@ OBJS=()
 for source in "${SOURCES[@]}"; do
   object="$OBJDIR/$(basename "${source%.c}").o"
   "$CC" -I src -idirafter /nxsr/usr/include \
-    -D_GNU_SOURCE -O2 -g -fPIE -fno-strict-aliasing -fno-omit-frame-pointer \
+    -O2 -g -fPIE -fno-strict-aliasing -fno-omit-frame-pointer \
     -ffile-prefix-map=/repo=. -fdebug-prefix-map=/repo=. \
     -Wall -Wextra -Wno-unused-parameter -Wno-unused-function \
     -c "$source" -o "$object"
   OBJS+=("$object")
 done
 
-# Every library below is a firmware component.  Recording only the SONAME keeps
-# the loader free of the host's newer glibc while still binding at runtime to
-# whatever SDL2/OpenAL/mpg123/GLES the device actually ships.
+# Recording only stable SONAMEs keeps the loader free of the host's newer
+# glibc.  mpg123 resolves to the package copy at runtime; the other stubs bind
+# to the provider selected by the firmware/PortMaster environment.
 UNDEFINED=$($NM --undefined-only "${OBJS[@]}" 2>/dev/null | awk '{print $NF}' | sort -u)
 make_stub() {
   local soname=$1 pattern=$2 name=$3 symbol
@@ -125,12 +183,10 @@ make_stub() {
 make_stub libSDL2-2.0.so.0     '^SDL_'                  SDL2
 make_stub libopenal.so.1       '^(al|alc)[A-Z]'         openal
 make_stub libmpg123.so.0       '^mpg123_'               mpg123
-make_stub libGLESv1_CM.so.1    '^gl[A-Z]'               GLESv1_CM
-make_stub libEGL.so.1          '^egl[A-Z]'              EGL
 
 "$CC" -fPIE -pie -rdynamic -o "$OUTPUT" "${OBJS[@]}" \
   -L"$STUBDIR" -Wl,--no-as-needed \
-  -lSDL2 -lopenal -lmpg123 -lGLESv1_CM -lEGL -Wl,--as-needed \
+  -lSDL2 -lopenal -lmpg123 -Wl,--as-needed \
   -ldl -lm -lpthread -lz -lgcc_s \
   -Wl,--build-id=sha1 -Wl,-z,relro,-z,now,-z,noexecstack
 "$STRIP" --strip-debug "$OUTPUT"
@@ -175,7 +231,7 @@ fi
 NEEDED=$("$READELF" -dW "$OUTPUT" |
   awk -F'[][]' '/NEEDED/ {print $2}' | sort)
 EXPECTED=$(printf '%s\n' \
-  libEGL.so.1 libGLESv1_CM.so.1 libSDL2-2.0.so.0 libc.so.6 libdl.so.2 \
+  libSDL2-2.0.so.0 libc.so.6 libdl.so.2 \
   libgcc_s.so.1 libm.so.6 libmpg123.so.0 libopenal.so.1 libpthread.so.0 \
   libz.so.1 | sort)
 [ "$NEEDED" = "$EXPECTED" ] || {
@@ -203,10 +259,45 @@ if strings "$OUTPUT" |
   exit 1
 fi
 
-chown "${SWORDIGO_HOST_UID:-0}:${SWORDIGO_HOST_GID:-0}" "$OUTPUT" 2>/dev/null || true
+MPG_MACHINE=$("$READELF" -h /repo/libmpg123.so.0 |
+  sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p')
+[ "$MPG_MACHINE" = AArch64 ] || {
+  echo "unexpected mpg123 ELF machine: $MPG_MACHINE" >&2
+  exit 1
+}
+MPG_SONAME=$("$READELF" -dW /repo/libmpg123.so.0 |
+  awk -F'[][]' '/SONAME/ {print $2}')
+[ "$MPG_SONAME" = libmpg123.so.0 ] || {
+  echo "unexpected mpg123 SONAME: $MPG_SONAME" >&2
+  exit 1
+}
+MPG_MAX_GLIBC=$("$READELF" --version-info /repo/libmpg123.so.0 |
+  grep -oE 'GLIBC_[0-9]+([.][0-9]+)*' | sort -Vu | tail -1)
+[ "$MPG_MAX_GLIBC" = GLIBC_2.17 ] || {
+  echo "unexpected mpg123 glibc floor: $MPG_MAX_GLIBC" >&2
+  exit 1
+}
+if "$READELF" -dW /repo/libmpg123.so.0 | grep -Eq '(RPATH|RUNPATH)'; then
+  echo "bundled mpg123 contains RPATH/RUNPATH" >&2
+  exit 1
+fi
+MPG_NEEDED=$("$READELF" -dW /repo/libmpg123.so.0 |
+  awk -F'[][]' '/NEEDED/ {print $2}' | sort)
+[ "$MPG_NEEDED" = "$(printf '%s\n' libc.so.6 libm.so.6 | sort)" ] || {
+  echo "unexpected mpg123 DT_NEEDED set:" >&2
+  printf '%s\n' "$MPG_NEEDED" >&2
+  exit 1
+}
+
+chown "${SWORDIGO_HOST_UID:-0}:${SWORDIGO_HOST_GID:-0}" \
+  "$OUTPUT" /repo/libmpg123.so.0 \
+  /repo/licenses/mpg123-LGPL-2.1-or-later.txt 2>/dev/null || true
 printf 'universal loader: %s | ABI %s | interpreter %s\n' \
   "$OUTPUT" "$MAX_GLIBC" "$INTERPRETER"
 printf 'DT_NEEDED: %s\n' "$(printf '%s\n' "$NEEDED" | tr '\n' ' ')"
 printf 'TLS guard: %s; memsz=%s\n' "$PAD_LAYOUT" "$TLS_MEMSZ"
 file "$OUTPUT"
 sha256sum "$OUTPUT"
+printf 'bundled mpg123: %s | ABI %s | SONAME %s\n' \
+  /repo/libmpg123.so.0 "$MPG_MAX_GLIBC" "$MPG_SONAME"
+sha256sum /repo/libmpg123.so.0

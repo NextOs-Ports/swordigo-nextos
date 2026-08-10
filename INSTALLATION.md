@@ -34,18 +34,13 @@
 
 ### Updating an existing installation
 
-Extract v1.0.8 over the existing installation. You do **not** need to remove
-the APK, `assets/`, `res/`, `libswordigo.so` or saves. The new launcher selects
-`swordigo-nextos-v108` and `nxbootstrap-0.5.1.sh`. Regular, byte-identical
-copies named `swordigo-nextos`, `swordigo` and `nxbootstrap.sh` safely cover
-firmware installers that preserve an older `Swordigo.sh` during the overlay.
+Extract v1.0.11 over the existing installation. You do **not** need to remove
+the APK, `assets/`, `res/`, `libswordigo.so` or saves. The launcher selects the
+stable `swordigo-nextos` executable directly. A clean install is recommended
+when replacing the failed v1.0.10 test candidate.
 
-Logs: `swordigo/debug.log` and `swordigo/nxextract.log`. If the launcher
-fails before `debug.log` can open, it writes a fresh
-`swordigo-launcher-error.<pid>.log` next to the `.sh`, next to the resolved
-launcher, and/or in the temporary directory when those locations are writable.
-The static `swordigo/nxdeployment.json` confirms which generated deployment
-was installed; it is not proof that the launcher actually ran.
+Logs: `swordigo/log.txt`, the rotated `swordigo/log.prev.txt`, and
+`swordigo/nxextract.log`.
 The release also contains `swordigo/.nxrelease/NXRELEASE-METADATA.json`,
 `swordigo/.nxrelease/MANIFEST.sha256` and
 `swordigo/.nxrelease/SBOM.cdx.json` so the public ZIP can be reopened and
@@ -74,15 +69,13 @@ verified without trusting the build directory.
 
 ### Atualizar uma instalação existente
 
-Extraia a v1.0.8 por cima da instalação existente. Não apague o APK,
-`assets/`, `res/`, `libswordigo.so` nem os saves. O launcher novo escolhe
-`swordigo-nextos-v108` e `nxbootstrap-0.5.1.sh`; as cópias regulares e
-byte-idênticas `swordigo-nextos`, `swordigo` e `nxbootstrap.sh` atendem
-firmwares que preservem um `Swordigo.sh` anterior durante o overlay.
+Extraia a v1.0.11 por cima da instalação existente. Não apague o APK,
+`assets/`, `res/`, `libswordigo.so` nem os saves. O launcher chama diretamente
+o executável estável `swordigo-nextos`. Recomenda-se instalação limpa ao
+substituir a candidata v1.0.10 que falhou.
 
-Logs: `swordigo/debug.log`, `swordigo/nxextract.log` e, para falha anterior ao
-runtime, `swordigo-launcher-error.<pid>.log`. O `nxdeployment.json` prova que o
-deployment gerado foi instalado, mas não prova sozinho que o launcher rodou.
+Logs: `swordigo/log.txt`, o anterior em `swordigo/log.prev.txt` e
+`swordigo/nxextract.log`.
 O ZIP também leva metadados, manifesto de hashes e SBOM em
 `swordigo/.nxrelease/`, para ser reaberto e verificado sem confiar na árvore
 local da build.

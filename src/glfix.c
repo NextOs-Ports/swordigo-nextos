@@ -32,7 +32,9 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "contract.h"
 #include "glfix.h"
+#include "gl_provider_policy.h"
 #include "util.h"
 
 #define GLFIX_MARKER "SWORDIGO_GLFIX_APPLIED"
@@ -41,12 +43,20 @@ static char **g_saved_argv;
 
 void glfix_set_argv(char **argv) { g_saved_argv = argv; }
 
-/* Blob variants that never drive a KMSDRM panel: the dummy/stub blobs accept
- * every call and draw nothing (a second black screen, silently), and the
- * x11/wayland variants target a windowing system this fleet does not run. */
-static int glfix_variant_rejected(const char *name) {
-  return strstr(name, "dummy") || strstr(name, "stub") ||
-         strstr(name, "x11") || strstr(name, "wayland");
+static int glfix_enabled(const char *quirk) {
+  const char *mode = getenv("SWORDIGO_GLFIX");
+  if (mode && mode[0] == '0') {
+    debugPrintf("glfix: disabled by SWORDIGO_GLFIX=0\n");
+    return 0;
+  }
+  if (mode && mode[0] == '1')
+    return 1;
+  if (!swordigo_contract_quirk_enabled(quirk)) {
+    debugPrintf("glfix: disabled because manifest quirk is absent: %s\n",
+                quirk);
+    return 0;
+  }
+  return 1;
 }
 
 /* Providers already mapped in this process (the crossed or kernel-mismatched
@@ -156,6 +166,7 @@ static const char *const glfix_dirs[] = {
 };
 
 static int glfix_find_blob(char *out, size_t out_size,
+                           const char *video_backend,
                            int (*probe)(const char *)) {
   const char *forced = getenv("SWORDIGO_GLFIX_BLOB");
   if (forced && *forced) {
@@ -176,9 +187,10 @@ static int glfix_find_blob(char *out, size_t out_size,
       while ((entry = readdir(dir)) != NULL) {
         if (fnmatch(glfix_patterns[p], entry->d_name, 0) != 0)
           continue;
-        if (glfix_variant_rejected(entry->d_name)) {
-          debugPrintf("glfix: %s/%s skipped (variant unfit for KMSDRM)\n",
-                      glfix_dirs[d], entry->d_name);
+        if (!gl_provider_name_compatible(video_backend, entry->d_name)) {
+          debugPrintf("glfix: %s/%s skipped (provider name incompatible "
+                      "with backend '%s')\n", glfix_dirs[d], entry->d_name,
+                      video_backend && video_backend[0] ? video_backend : "?");
           continue;
         }
         char candidate[1024];
@@ -218,12 +230,10 @@ static void glfix_reexec_with_preload(const char *blob) {
 
 /* Called once, right after the real context reported its renderer string.
  * Returns only when no repair applies; on repair it re-execs the process. */
-void glfix_maybe_reexec(const char *renderer, void (*teardown)(void)) {
-  const char *mode = getenv("SWORDIGO_GLFIX");
-  if (mode && mode[0] == '0') {
-    debugPrintf("glfix: disabled by SWORDIGO_GLFIX=0\n");
+void glfix_maybe_reexec(const char *renderer, const char *video_backend,
+                        void (*teardown)(void)) {
+  if (!glfix_enabled("adapter.gl-provider-reexec-preload"))
     return;
-  }
   if (!glfix_renderer_is_broken(renderer))
     return;
   if (getenv(GLFIX_MARKER)) {
@@ -231,7 +241,8 @@ void glfix_maybe_reexec(const char *renderer, void (*teardown)(void)) {
     return;
   }
   char blob[1024];
-  if (!glfix_find_blob(blob, sizeof(blob), glfix_blob_usable)) {
+  if (!glfix_find_blob(blob, sizeof(blob), video_backend,
+                       glfix_blob_usable)) {
     debugPrintf("glfix: empty renderer but no usable Mali blob found\n");
     return;
   }
@@ -245,24 +256,26 @@ void glfix_maybe_reexec(const char *renderer, void (*teardown)(void)) {
 /* GL init died before any window existed: the provider the linker resolved
  * refused the kernel driver.  Same repair, harder proof — every candidate
  * must initialize EGL against the live kernel before it earns the re-exec. */
-void glfix_maybe_reexec_noctx(const char *reason, void (*teardown)(void)) {
-  const char *mode = getenv("SWORDIGO_GLFIX");
-  if (mode && mode[0] == '0') {
-    debugPrintf("glfix: disabled by SWORDIGO_GLFIX=0\n");
+void glfix_maybe_reexec_noctx(const char *reason, const char *video_backend,
+                              void (*teardown)(void)) {
+  if (!glfix_enabled("adapter.gl-provider-probe-init-reexec"))
     return;
-  }
   if (getenv(GLFIX_MARKER)) {
     debugPrintf("glfix: GL init still failing after preload; giving up\n");
     return;
   }
   debugPrintf("glfix: GL init failed pre-context (%s); "
               "probing alternate providers\n", reason ? reason : "unknown");
+  char backend[64];
+  snprintf(backend, sizeof(backend), "%s",
+           video_backend && video_backend[0] ? video_backend : "");
   /* The display and the kernel driver fd must be free before the probe. */
   if (teardown)
     teardown();
   dl_iterate_phdr(glfix_collect_loaded_cb, NULL);
   char blob[1024];
-  if (!glfix_find_blob(blob, sizeof(blob), glfix_blob_initializes)) {
+  if (!glfix_find_blob(blob, sizeof(blob), backend,
+                       glfix_blob_initializes)) {
     debugPrintf("glfix: no alternate provider initializes on this kernel; "
                 "leaving the original failure\n");
     return;
