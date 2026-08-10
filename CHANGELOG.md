@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.0.9 — 2026-08-10 (test candidate)
+
+- **Black screen with live audio on dArkOS-family firmwares fixed in the
+  loader (glfix).** Field diagnosis (credit: charles): those firmwares ship
+  crossed SONAMEs — `libGLESv1_CM.so.1`/`libEGL.so.1` resolve to driverless
+  Mesa builds while the real Mali blob sits behind the unversioned names. The
+  loader now detects the only safe signal (a real context whose
+  `glGetString(GL_RENDERER)` comes back empty), picks a validated Mali blob
+  (prefers `-gbm`, requires the GLES1 entry points via `dlsym`, refuses
+  `dummy`/`stub`/`x11`/`wayland` variants) and re-executes itself once with
+  `LD_PRELOAD` pointing at it. Healthy stacks — including Mesa/Panfrost,
+  which report a renderer — are never touched. Controls:
+  `SWORDIGO_GLFIX=0` disables, `SWORDIGO_GLFIX_BLOB=/path` forces a blob.
+- **R3 is now the finger, not a click pulse.** Press R3 = touch down at the
+  cursor, keep holding and move the right stick = drag (enchanting the sword
+  with a talisman now works), release = touch up. A quick press still taps.
+- **Single self-contained launcher (nxbootstrap 0.6.0).** The 0.5.1 bash
+  library, its receipt and the fail-closed deployment pins are retired.
+  The new launcher is fail-open on PortMaster, holds a single-instance
+  `flock` on the loader, forwards INT/TERM/HUP to the game and re-waits for
+  its true exit status, resets the console before `pm_finish`, and
+  canonicalizes `GAMEDIR` (symlinked ROM roots broke recipe containment).
+- Single runtime `swordigo-nextos-v109` (GLIBC_2.27); the three same-byte
+  copies of 1.0.8 are gone. Clean install recommended.
+- Validated end to end on NextOS Elite (Amlogic/Mali-450 fbdev): extraction
+  from the APK, gameplay frames on screen, clean TERM exit. The crossed-
+  SONAME repair itself still needs a physical pass on a dArkOS device.
+
 ## 1.0.8 — 2026-08-09 (release candidate)
 
 - Applied the generated nxbootstrap 0.5.1 deployment contract. The visible

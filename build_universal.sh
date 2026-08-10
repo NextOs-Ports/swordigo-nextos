@@ -11,7 +11,7 @@
 set -euo pipefail
 
 PORT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-OUTPUT=${SWORDIGO_UNIVERSAL_OUTPUT:-swordigo-nextos-v108}
+OUTPUT=${SWORDIGO_UNIVERSAL_OUTPUT:-swordigo-nextos-v109}
 BUILDER_IMAGE=playfetch-builder:buster
 BUILDER_IMAGE_ID=sha256:036c7910ea53bc78cc213452afa92fa83d55de1c51ae54f315af58b5a41a45cf
 export LC_ALL=C
@@ -90,6 +90,7 @@ trap 'rm -rf "$OBJDIR" "$STUBDIR"' EXIT
 
 SOURCES=(
   src/main.c
+  src/glfix.c
   src/imports.c
   src/jni_fake.c
   src/music_player.c

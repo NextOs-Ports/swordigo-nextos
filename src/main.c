@@ -25,6 +25,7 @@
 #include "music_player.h"
 #include "so_util.h"
 #include "util.h"
+#include "glfix.h"
 
 #define MEMORY_MB 384
 #define SO_NAME "libswordigo.so"
@@ -47,6 +48,19 @@ int screen_height = 720;
 static char data_path[512];
 static SDL_Window *g_win;
 static SDL_GLContext g_ctx;
+
+/* Release the display before glfix re-execs us (KMSDRM master, VT state). */
+static void glfix_video_teardown(void) {
+  if (g_ctx) {
+    SDL_GL_DeleteContext(g_ctx);
+    g_ctx = NULL;
+  }
+  if (g_win) {
+    SDL_DestroyWindow(g_win);
+    g_win = NULL;
+  }
+  SDL_Quit();
+}
 static volatile int g_running = 1;
 static double g_time;
 static int debug_control_enabled;
@@ -488,29 +502,35 @@ static void update_cursor(void) {
     g_cursor_show--;
   }
 
+  /* R3 is the finger, not a click pulse: press = touch down at the cursor,
+   * keep holding while moving the right stick = drag (this is what enchanting
+   * the sword with a talisman needs), release = touch up.  A quick press and
+   * release still reads as a tap. */
   int r3 = g_pad &&
            SDL_GameControllerGetButton(g_pad, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+  (void)want_tap;
+  (void)wx;
+  (void)wy;
   if (r3 && !g_cursor_r3_prev) {
-    want_tap = 1;
-    wx = g_cursor_x;
-    wy = g_cursor_y;
+    g_cursor_tx = g_cursor_x;
+    g_cursor_ty = g_cursor_y;
+    emit_touch(TOUCH_BEGAN, 9, g_cursor_tx, g_cursor_ty);
+    g_cursor_touch_hold = 1;
     g_cursor_show = 60;
+    debugPrintf("cursor: R3 down (%.0f,%.0f)\n", g_cursor_tx, g_cursor_ty);
+  } else if (r3 && g_cursor_touch_hold) {
+    g_cursor_tx = g_cursor_x;
+    g_cursor_ty = g_cursor_y;
+    emit_touch(TOUCH_MOVED, 9, g_cursor_tx, g_cursor_ty);
+    g_cursor_show = 60;
+  } else if (!r3 && g_cursor_r3_prev && g_cursor_touch_hold) {
+    g_cursor_tx = g_cursor_x;
+    g_cursor_ty = g_cursor_y;
+    emit_touch(TOUCH_ENDED, 9, g_cursor_tx, g_cursor_ty);
+    g_cursor_touch_hold = 0;
+    debugPrintf("cursor: R3 up (%.0f,%.0f)\n", g_cursor_tx, g_cursor_ty);
   }
   g_cursor_r3_prev = r3;
-
-  if (g_cursor_touch_hold > 0) {
-    g_cursor_touch_hold--;
-    if (g_cursor_touch_hold == 0)
-      emit_touch(TOUCH_ENDED, 9, g_cursor_tx, g_cursor_ty);
-    else
-      emit_touch(TOUCH_MOVED, 9, g_cursor_tx, g_cursor_ty);
-  } else if (want_tap) {
-    g_cursor_tx = wx;
-    g_cursor_ty = wy;
-    emit_touch(TOUCH_BEGAN, 9, g_cursor_tx, g_cursor_ty);
-    g_cursor_touch_hold = 6;
-    debugPrintf("cursor: R3 tap (%.0f,%.0f)\n", g_cursor_tx, g_cursor_ty);
-  }
 }
 
 static void ctrl_point(int flags, float ax, float ay, float *x, float *y) {
@@ -848,6 +868,11 @@ static int gl_init(void) {
    * the firmware actually granted (alpha above all) and the GL blob in use. */
   const GLubyte *renderer = glGetString(GL_RENDERER);
   const GLubyte *version = glGetString(GL_VERSION);
+  /* Crossed-SONAME firmware (Mesa behind libGLESv1_CM.so.1, Mali blob behind
+   * the unversioned name) yields a context with an empty renderer that draws
+   * nothing.  Repair by re-exec with the blob preloaded; healthy stacks
+   * (including Panfrost, which reports a renderer) are never touched. */
+  glfix_maybe_reexec((const char *)renderer, glfix_video_teardown);
   const char *video_driver = SDL_GetCurrentVideoDriver();
   g_finish_before_swap = finish_before_swap_policy(video_driver);
   debugPrintf("gl: GLES1.1 %dx%d alpha=%d depth=%d driver='%s'\n", screen_width,
@@ -988,6 +1013,7 @@ static void check_data(void) {
 int main(int argc, char **argv) {
   setvbuf(stdout, NULL, _IOLBF, 0);
   setvbuf(stderr, NULL, _IOLBF, 0);
+  glfix_set_argv(argv);
 
   if (argc > 1 && chdir(argv[1]) == 0)
     debugPrintf("chdir %s\n", argv[1]);

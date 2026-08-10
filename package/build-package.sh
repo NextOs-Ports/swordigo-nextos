@@ -17,7 +17,7 @@ DESTINATION=${1:-"$PORT_DIR/.build/Swordigo.NextOS-v$VERSION-nxrelease"}
 ARCHIVE_NAME="Swordigo.NextOS-v$VERSION.zip"
 
 NXRELEASE_VERSION='nxrelease 0.2.5'
-NXRELEASE_SHA256=a41b7bd2bd8c5359d63727fb5a2456f4a0018832ade88effdb0989b0115f430a
+NXRELEASE_SHA256=3f9db950e5f5c606544f53bf104170bfebba6850fae7814cba3971daff182751
 
 fail() {
   printf 'swordigo package error: %s\n' "$*" >&2
@@ -59,9 +59,9 @@ trap cleanup EXIT INT TERM
 if [[ ${SWORDIGO_SKIP_BUILD:-0} != 1 ]]; then
   "$PORT_DIR/build_universal.sh"
 fi
-[[ -x $PORT_DIR/swordigo-nextos-v108 &&
-   ! -L $PORT_DIR/swordigo-nextos-v108 ]] ||
-  fail 'swordigo-nextos-v108 is missing, linked or not executable'
+[[ -x $PORT_DIR/swordigo-nextos-v109 &&
+   ! -L $PORT_DIR/swordigo-nextos-v109 ]] ||
+  fail 'swordigo-nextos-v109 is missing, linked or not executable'
 
 bash "$PORT_DIR/tests/launcher_test.sh"
 python3 -B "$NXRELEASE" validate --manifest "$MANIFEST"

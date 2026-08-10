@@ -6,7 +6,7 @@
     "game.swordigo.fullscreen-desktop",
     "game.swordigo.present-finish"
   ],
-  "executable": "swordigo-nextos-v108",
+  "executable": "swordigo-nextos-v109",
   "home_mode": "port",
   "id": "swordigo",
   "launcher_name": "Swordigo.sh",
@@ -26,7 +26,7 @@
     "input.controller-api"
   ],
   "required_files": [
-    "swordigo-nextos-v108",
+    "swordigo-nextos-v109",
     "libswordigo.so",
     "res/7c.mp3",
     "alsoft.conf"

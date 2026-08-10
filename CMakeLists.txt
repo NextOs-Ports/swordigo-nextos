@@ -11,6 +11,7 @@ pkg_check_modules(MPG123 REQUIRED libmpg123)
 
 add_executable(swordigo-nextos-v108
   src/main.c
+  src/glfix.c
   src/imports.c
   src/jni_fake.c
   src/music_player.c
