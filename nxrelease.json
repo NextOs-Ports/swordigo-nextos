@@ -3,7 +3,7 @@
   "source_root": ".",
   "package": {
     "id": "swordigo",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "profile": "universal-portmaster",
     "launcher": "Swordigo.sh",
     "launcher_chain": [
@@ -130,7 +130,7 @@
       "architecture": "aarch64",
       "build_profile": "universal-low-glibc",
       "provenance": "build_universal.sh; pinned offline Debian Buster image sha256:036c7910ea53bc78cc213452afa92fa83d55de1c51ae54f315af58b5a41a45cf; target sysroot used for headers only",
-      "sha256": "458c3e2bac7edc61c3e3b23622facbb5222bab0d8292c40c37675ec0f695800a",
+      "sha256": "4b73352cfccc579de4d03c003905a18f2244df4a24945125209b5b94007d42fe",
       "needed": [
         "libEGL.so.1",
         "libGLESv1_CM.so.1",
@@ -179,7 +179,7 @@
       "target": "swordigo/version.txt",
       "kind": "payload",
       "mode": "0644",
-      "sha256": "2df2bd7011e87351e2e3e296ddb7f2520270a76160f95b2d64b337167294f28c"
+      "sha256": "00251bee1d03f658c2324926785a996dd040dff16bf993b2c520a20edbba72c8"
     },
     {
       "source": "package/GAMEDATA.txt",

@@ -833,11 +833,17 @@ static int gl_init(void) {
   }
   if (!g_win) {
     fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
+    /* AeUX-class firmware: the resolved EGL provider refuses the kernel
+     * driver (user/kernel API mismatch) and no window ever exists.  Probe
+     * for a provider that initializes on this kernel and re-exec once with
+     * it preloaded; returns untouched when no candidate proves itself. */
+    glfix_maybe_reexec_noctx("window creation failed", glfix_video_teardown);
     return -1;
   }
   g_ctx = SDL_GL_CreateContext(g_win);
   if (!g_ctx) {
     fprintf(stderr, "SDL_GL_CreateContext: %s\n", SDL_GetError());
+    glfix_maybe_reexec_noctx("context creation failed", glfix_video_teardown);
     return -1;
   }
   if (SDL_GL_MakeCurrent(g_win, g_ctx) != 0) {

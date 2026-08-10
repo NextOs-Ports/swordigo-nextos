@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.10 — 2026-08-10 (test candidate)
+
+- **"GL init failed" on ArkOS AeUX-class firmwares repaired in the loader
+  (glfix mode 2).** Field log: the EGL provider the dynamic linker resolves
+  is a Mali blob built for another kernel generation — `/dev/mali0 is not of
+  a compatible version (user 10.6, kernel 11.7)` — so `SDL_CreateWindow`
+  dies before any context exists and the old repair (which measures the
+  renderer string of a live context) never ran. The loader now catches the
+  pre-context failure, tears the display down, and probes the system's other
+  Mali provider objects with a **real `eglGetDisplay` + `eglInitialize`
+  against the live kernel** (the already-loaded, failing provider is
+  excluded; `dummy`/`stub`/`x11`/`wayland` variants refused). The first
+  candidate that initializes earns a single re-exec with `LD_PRELOAD`; if
+  none initializes, the original failure is reported untouched. Devices that
+  boot today never reach the new path. Controls unchanged:
+  `SWORDIGO_GLFIX=0` disables, `SWORDIGO_GLFIX_BLOB=/path` forces a blob.
+- Registered in the framework quirk registry as
+  `adapter.gl-provider-probe-init-reexec` (additive; no launcher, framework
+  code or published-port behavior changed).
+
 ## 1.0.9 — 2026-08-10 (test candidate)
 
 - **Black screen with live audio on dArkOS-family firmwares fixed in the

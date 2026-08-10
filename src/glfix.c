@@ -25,6 +25,8 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fnmatch.h>
+#include <limits.h>
+#include <link.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +49,40 @@ static int glfix_variant_rejected(const char *name) {
          strstr(name, "x11") || strstr(name, "wayland");
 }
 
+/* Providers already mapped in this process (the crossed or kernel-mismatched
+ * ones the linker resolved).  A candidate that is the same file proved itself
+ * broken by getting us here, so the scan must skip it. */
+#define GLFIX_MAX_LOADED 8
+static char g_loaded_providers[GLFIX_MAX_LOADED][PATH_MAX];
+static int g_loaded_provider_count;
+
+static int glfix_collect_loaded_cb(struct dl_phdr_info *info, size_t size,
+                                   void *data) {
+  (void)size;
+  (void)data;
+  const char *name = info->dlpi_name;
+  if (!name || !name[0])
+    return 0;
+  if (!strstr(name, "libEGL.so") && !strstr(name, "libGLES") &&
+      !strstr(name, "mali") && !strstr(name, "Mali"))
+    return 0;
+  if (g_loaded_provider_count >= GLFIX_MAX_LOADED)
+    return 0;
+  if (realpath(name, g_loaded_providers[g_loaded_provider_count]))
+    g_loaded_provider_count++;
+  return 0;
+}
+
+static int glfix_candidate_is_loaded(const char *path) {
+  char resolved[PATH_MAX];
+  if (!realpath(path, resolved))
+    return 0;
+  for (int i = 0; i < g_loaded_provider_count; i++)
+    if (strcmp(resolved, g_loaded_providers[i]) == 0)
+      return 1;
+  return 0;
+}
+
 /* A usable provider must export the GLES1 entry points this game calls and
  * its own EGL.  dlsym proves it instead of trusting the file name. */
 static int glfix_blob_usable(const char *path) {
@@ -63,6 +99,51 @@ static int glfix_blob_usable(const char *path) {
   return ok;
 }
 
+/* Pre-context repair needs a harder proof: the resolved provider exported
+ * every symbol and still refused the kernel driver (user/kernel API mismatch,
+ * e.g. Mali user 10.6 vs kernel 11.7).  Only a real eglGetDisplay +
+ * eglInitialize against the live kernel separates a blob that matches this
+ * firmware from one that merely looks right.  A stale blob fails the same way
+ * it failed the game; the matching one initializes.  The probe runs after
+ * video teardown, in a process that is otherwise dead, so a misbehaving
+ * candidate costs nothing that was not already lost. */
+static int glfix_blob_initializes(const char *path) {
+  if (!glfix_blob_usable(path))
+    return 0;
+  if (glfix_candidate_is_loaded(path)) {
+    debugPrintf("glfix: %s skipped (already loaded and failing)\n", path);
+    return 0;
+  }
+  void *handle = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+  if (!handle)
+    return 0;
+  void *(*get_display)(void *) =
+      (void *(*)(void *))dlsym(handle, "eglGetDisplay");
+  unsigned (*initialize)(void *, int *, int *) =
+      (unsigned (*)(void *, int *, int *))dlsym(handle, "eglInitialize");
+  unsigned (*terminate)(void *) =
+      (unsigned (*)(void *))dlsym(handle, "eglTerminate");
+  int ok = 0;
+  if (get_display && initialize) {
+    void *display = get_display(NULL); /* EGL_DEFAULT_DISPLAY */
+    if (display) {
+      int major = 0, minor = 0;
+      if (initialize(display, &major, &minor)) {
+        ok = 1;
+        debugPrintf("glfix: %s initializes EGL %d.%d against this kernel\n",
+                    path, major, minor);
+        if (terminate)
+          terminate(display);
+      }
+    }
+  }
+  dlclose(handle);
+  if (!ok)
+    debugPrintf("glfix: %s rejected (eglInitialize failed on this kernel)\n",
+                path);
+  return ok;
+}
+
 /* Deliberate pattern order: the -gbm variant matches SDL's KMSDRM backend and
  * must win over an alphabetical scan (which would find -dummy first). */
 static const char *const glfix_patterns[] = {
@@ -74,10 +155,11 @@ static const char *const glfix_dirs[] = {
     "/usr/lib64", "/usr/lib", "/lib",
 };
 
-static int glfix_find_blob(char *out, size_t out_size) {
+static int glfix_find_blob(char *out, size_t out_size,
+                           int (*probe)(const char *)) {
   const char *forced = getenv("SWORDIGO_GLFIX_BLOB");
   if (forced && *forced) {
-    if (access(forced, R_OK) == 0 && glfix_blob_usable(forced)) {
+    if (access(forced, R_OK) == 0 && probe(forced)) {
       snprintf(out, out_size, "%s", forced);
       return 1;
     }
@@ -102,7 +184,7 @@ static int glfix_find_blob(char *out, size_t out_size) {
         char candidate[1024];
         snprintf(candidate, sizeof(candidate), "%s/%s", glfix_dirs[d],
                  entry->d_name);
-        if (glfix_blob_usable(candidate)) {
+        if (probe(candidate)) {
           snprintf(out, out_size, "%s", candidate);
           closedir(dir);
           return 1;
@@ -116,6 +198,22 @@ static int glfix_find_blob(char *out, size_t out_size) {
 
 int glfix_renderer_is_broken(const char *renderer) {
   return renderer == NULL || renderer[0] == '\0';
+}
+
+/* One attempt ever: the marker survives the exec and stops any loop. */
+static void glfix_reexec_with_preload(const char *blob) {
+  const char *previous = getenv("LD_PRELOAD");
+  char preload[2048];
+  if (previous && *previous)
+    snprintf(preload, sizeof(preload), "%s:%s", blob, previous);
+  else
+    snprintf(preload, sizeof(preload), "%s", blob);
+  debugPrintf("glfix: re-executing with LD_PRELOAD=%s\n", preload);
+  setenv("LD_PRELOAD", preload, 1);
+  setenv(GLFIX_MARKER, "1", 1);
+  if (g_saved_argv)
+    execv("/proc/self/exe", g_saved_argv);
+  debugPrintf("glfix: execv failed; continuing without repair\n");
 }
 
 /* Called once, right after the real context reported its renderer string.
@@ -133,23 +231,41 @@ void glfix_maybe_reexec(const char *renderer, void (*teardown)(void)) {
     return;
   }
   char blob[1024];
-  if (!glfix_find_blob(blob, sizeof(blob))) {
+  if (!glfix_find_blob(blob, sizeof(blob), glfix_blob_usable)) {
     debugPrintf("glfix: empty renderer but no usable Mali blob found\n");
     return;
   }
-  const char *previous = getenv("LD_PRELOAD");
-  char preload[2048];
-  if (previous && *previous)
-    snprintf(preload, sizeof(preload), "%s:%s", blob, previous);
-  else
-    snprintf(preload, sizeof(preload), "%s", blob);
   debugPrintf("glfix: empty renderer on the crossed-SONAME stack; "
-              "re-executing with LD_PRELOAD=%s\n", preload);
+              "re-executing with the blob preloaded\n");
   if (teardown)
     teardown();
-  setenv("LD_PRELOAD", preload, 1);
-  setenv(GLFIX_MARKER, "1", 1);
-  if (g_saved_argv)
-    execv("/proc/self/exe", g_saved_argv);
-  debugPrintf("glfix: execv failed; continuing without repair\n");
+  glfix_reexec_with_preload(blob);
+}
+
+/* GL init died before any window existed: the provider the linker resolved
+ * refused the kernel driver.  Same repair, harder proof — every candidate
+ * must initialize EGL against the live kernel before it earns the re-exec. */
+void glfix_maybe_reexec_noctx(const char *reason, void (*teardown)(void)) {
+  const char *mode = getenv("SWORDIGO_GLFIX");
+  if (mode && mode[0] == '0') {
+    debugPrintf("glfix: disabled by SWORDIGO_GLFIX=0\n");
+    return;
+  }
+  if (getenv(GLFIX_MARKER)) {
+    debugPrintf("glfix: GL init still failing after preload; giving up\n");
+    return;
+  }
+  debugPrintf("glfix: GL init failed pre-context (%s); "
+              "probing alternate providers\n", reason ? reason : "unknown");
+  /* The display and the kernel driver fd must be free before the probe. */
+  if (teardown)
+    teardown();
+  dl_iterate_phdr(glfix_collect_loaded_cb, NULL);
+  char blob[1024];
+  if (!glfix_find_blob(blob, sizeof(blob), glfix_blob_initializes)) {
+    debugPrintf("glfix: no alternate provider initializes on this kernel; "
+                "leaving the original failure\n");
+    return;
+  }
+  glfix_reexec_with_preload(blob);
 }

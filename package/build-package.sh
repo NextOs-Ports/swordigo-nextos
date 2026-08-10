@@ -12,7 +12,7 @@ PORT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd -P)
 VERSION=$(tr -d '\r\n' < "$PORT_DIR/version.txt")
 MANIFEST="$PORT_DIR/nxrelease.json"
 FRAMEWORK_ROOT=${NX_FRAMEWORK_ROOT:-"$PORT_DIR/../nextos_ports_android/framework"}
-NXRELEASE=${NXRELEASE:-"$FRAMEWORK_ROOT/nxrelease/nxrelease.py"}
+NXRELEASE=${NXRELEASE:-"$SCRIPT_DIR/nxrelease-vendor/nxrelease/nxrelease.py"}
 DESTINATION=${1:-"$PORT_DIR/.build/Swordigo.NextOS-v$VERSION-nxrelease"}
 ARCHIVE_NAME="Swordigo.NextOS-v$VERSION.zip"
 
