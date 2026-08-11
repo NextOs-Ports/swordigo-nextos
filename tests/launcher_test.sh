@@ -64,6 +64,8 @@ for needle in \
   'get_controls' \
   'GAMEDIR="/$directory/ports/swordigo"' \
   'flock -n 9' \
+  'command ls -Lldn /proc/self/fd/9' \
+  '"$NXBOOTSTRAP_LOCK_FILE" -ef /proc/self/fd/9' \
   'NXBOOTSTRAP_CHILD_STARTTIME' \
   'nxbootstrap_child_alive' \
   'nxbootstrap_finish' \
@@ -76,6 +78,10 @@ for needle in \
 do
   grep -Fq "$needle" "$LAUNCHER" || fail "launcher lacks canonical line: $needle"
 done
+if grep -Fq 'stat -L -c' "$LAUNCHER" ||
+   grep -Fq 'stat -L -t' "$LAUNCHER"; then
+  fail 'launcher still requires the external stat command'
+fi
 grep -Fq 'adapter.gl-provider-reexec-preload' "$LAUNCHER" ||
   fail 'launcher lost the post-context provider repair contract'
 grep -Fq 'adapter.gl-provider-probe-init-reexec' "$LAUNCHER" ||

@@ -17,7 +17,7 @@ DESTINATION=${1:-"$PORT_DIR/.build/Swordigo.NextOS-v$VERSION-nxrelease"}
 ARCHIVE_NAME="Swordigo.NextOS-v$VERSION.zip"
 
 NXRELEASE_VERSION='nxrelease 0.2.5'
-NXRELEASE_SHA256=dd307d3e18cd926be2cc51c2a7e9948193b3c309abcc414dfa8d784332df57ee
+NXRELEASE_SHA256=097ef954261d7e31fb4a759caf2ebda9be02f069b1968e3f7b379d92f51e732f
 
 fail() {
   printf 'swordigo package error: %s\n' "$*" >&2

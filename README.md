@@ -41,8 +41,9 @@ A successful install creates `libswordigo.so`, `assets/` and `res/` inside
 [`INSTALLATION.md`](INSTALLATION.md).
 
 Updating from an earlier release preserves extracted data and saves. Version
-1.0.11 returns to the stable public executable name `swordigo-nextos`; a clean
-install is recommended when replacing the failed 1.0.10 test candidate.
+1.0.13 keeps the stable public executable name `swordigo-nextos` and removes
+the launcher's external `stat` dependency without weakening double-launch
+safety.
 
 Firmware note: on **NextOS / EmuELEC** EmulationStation lists launchers from
 `roms/ports_scripts/`, so `Swordigo.sh` also goes there while the game folder
@@ -98,11 +99,12 @@ Evidence level, never a promise:
 | R36S / ArkOS-class (RK3326, Mali-G31, glibc 2.30, 640×480) | **physically validated** — clean install from the ZIP itself, on-device extraction, title, gameplay, audio and music, exit chord, frontend restored |
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **physically validated** |
 | X5M / NextOS (Amlogic, Mali-G310, KMSDRM, 1920×1080) | **physically validated** — video, audio, music, controls, R2/R3 cursor press/drag/release |
+| AmberELEC / BusyBox without `stat -c` | v1.0.12 launcher/extraction physically accepted; **physical gameplay of the exact 1.0.13 ZIP pending** |
 | Other AArch64 CFW with SDL2, OpenAL and GLES 1.1 | plausible, **not tested** |
 
-Those rows describe prior accepted releases. Version 1.0.11 is validated by
-host/build/package gates first; its result on the current ArkOS repair target
-is recorded only after a clean physical run.
+Those rows describe prior accepted releases. Version 1.0.13 is validated by
+host/build/package gates first and is recorded as physically accepted only
+after a clean run of this exact ZIP.
 
 The public executable is audited at a maximum requirement of `GLIBC_2.27`.
 The release bundles only a pinned low-glibc `libmpg123.so.0`; SDL2, GLES/EGL,
@@ -119,7 +121,7 @@ stack canary is anchored in a thread-local pad because the game reads it from
 the Bionic TLS slot. `STUDY.md` has the full reverse-engineering notes.
 
 The public package has one launcher chain only:
-`Swordigo.sh → swordigo/swordigo-nextos`. The generated nxbootstrap 0.6.1
+`Swordigo.sh → swordigo/swordigo-nextos`. The generated nxbootstrap 0.6.3
 logic is self-contained in the visible launcher; there is no second-stage
 `run.sh` or bootstrap library. NXExtract 1.2.6 runs as an isolated foreground
 phase before the owner data gate. The game-specific OpenAL and graphics policy
@@ -264,11 +266,12 @@ Nível de evidência, nunca promessa:
 | R36S / classe ArkOS (RK3326, Mali-G31, glibc 2.30, 640×480) | **validado fisicamente** — instalação limpa a partir do próprio ZIP, extração no aparelho, título, gameplay, áudio e música, atalho de saída, frontend restaurado |
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **validado fisicamente** |
 | X5M / NextOS (Amlogic, Mali-G310, KMSDRM, 1920×1080) | **validado fisicamente** — vídeo, áudio, música, controles e cursor R2/R3 com pressionar/arrastar/soltar |
+| AmberELEC / BusyBox sem `stat -c` | launcher/extração da v1.0.12 aceitos fisicamente; **gameplay físico do ZIP exato 1.0.13 pendente** |
 | Outros CFW AArch64 com SDL2, OpenAL e GLES 1.1 | plausível, **não testado** |
 
-Essas linhas registram releases aceitas anteriormente. A v1.0.11 passa
-primeiro pelos gates de host/build/pacote; o resultado no alvo atual da
-correção ArkOS só é registrado depois de um teste físico limpo.
+Essas linhas registram releases aceitas anteriormente. A v1.0.13 passa
+primeiro pelos gates de host/build/pacote e só é registrada como aceita
+fisicamente depois de um teste limpo deste mesmo ZIP.
 
 O executável público é auditado com teto de `GLIBC_2.27`. O release empacota
 somente uma `libmpg123.so.0` fixada e de glibc baixa; SDL2, GLES/EGL, OpenAL,
@@ -285,7 +288,7 @@ fica ancorado num pad thread-local porque o jogo o lê do slot TLS do bionic.
 As notas completas de engenharia reversa estão em `STUDY.md`.
 
 O pacote público tem uma única cadeia de lançamento:
-`Swordigo.sh → swordigo/swordigo-nextos`. A lógica gerada do nxbootstrap 0.6.1
+`Swordigo.sh → swordigo/swordigo-nextos`. A lógica gerada do nxbootstrap 0.6.3
 fica autocontida no launcher visível; não existe `run.sh` nem biblioteca de
 bootstrap intermediária. O NXExtract 1.2.6 roda como fase isolada em
 foreground antes do gate dos dados. As políticas OpenAL e gráficas específicas

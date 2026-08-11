@@ -34,7 +34,7 @@
 
 ### Updating an existing installation
 
-Extract v1.0.11 over the existing installation. You do **not** need to remove
+Extract v1.0.13 over the existing installation. You do **not** need to remove
 the APK, `assets/`, `res/`, `libswordigo.so` or saves. The launcher selects the
 stable `swordigo-nextos` executable directly. A clean install is recommended
 when replacing the failed v1.0.10 test candidate.
@@ -69,7 +69,7 @@ verified without trusting the build directory.
 
 ### Atualizar uma instalação existente
 
-Extraia a v1.0.11 por cima da instalação existente. Não apague o APK,
+Extraia a v1.0.13 por cima da instalação existente. Não apague o APK,
 `assets/`, `res/`, `libswordigo.so` nem os saves. O launcher chama diretamente
 o executável estável `swordigo-nextos`. Recomenda-se instalação limpa ao
 substituir a candidata v1.0.10 que falhou.

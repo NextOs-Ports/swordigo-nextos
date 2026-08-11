@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.13 — 2026-08-10
+
+- Regenerated the self-contained launcher from the canonical nxbootstrap 0.6.3
+  source at framework commit `9d08f03`. The single-instance lock no longer
+  invokes external `stat`: Bash `-ef` proves path-to-open-fd identity and
+  portable numeric `ls` supplies the hardlink count.
+- Kept all fail-closed protections and added a launcher gate that rejects both
+  the former `stat -c` and interim `stat -t` implementations. The approved
+  Swordigo loader is byte-identical to 1.0.12; lifecycle, graphics, audio,
+  controls, extraction and owner data are unchanged.
+
+## 1.0.12 — 2026-08-10
+
+- Fixed the generated single-instance lock on AmberELEC. Its intentionally
+  minimal BusyBox provides `stat -t` but is built without custom `stat -c`
+  formats; nxbootstrap 0.6.1 hid that command error and reported the valid lock
+  as `instance lock identity is unsafe` before Swordigo could start.
+- Updated to nxbootstrap 0.6.2. It keeps fail-closed symlink, ownership,
+  hardlink and path-to-open-fd checks, compares identity with Bash `-ef`, and
+  reads the hardlink count through BusyBox-compatible terse output.
+- Added an isolated launcher regression that rejects every `stat -c` call while
+  retaining the double-launch, atomic-replacement, hardlink and fd-leak gates.
+  The game loader, lifecycle, graphics, audio, controls and owner data are
+  unchanged from 1.0.11.
+
 ## 1.0.11 — 2026-08-10
 
 - Fixed digital R2/R3 cursor input on 12-button USB gamepads whose older SDL
