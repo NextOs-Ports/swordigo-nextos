@@ -332,6 +332,117 @@ static int g_cursor_r2_prev;
 static int g_cursor_touch_hold;
 static float g_cursor_tx, g_cursor_ty;
 static int g_raw_click_layout_logged;
+static int g_pad_left_stick_reachable;
+static int g_pad_right_stick_reachable;
+static int g_pad_left_trigger_reachable;
+static int g_pad_right_trigger_reachable;
+static int g_pad_r3_reachable;
+static int g_cursor_left_modifier_enabled;
+static int g_cursor_modifier_held;
+static int g_cursor_modifier_prev;
+
+static int pad_binding_reachable(SDL_GameControllerButtonBind binding) {
+  SDL_Joystick *joy;
+  if (!g_pad || !(joy = SDL_GameControllerGetJoystick(g_pad)))
+    return 0;
+  switch (binding.bindType) {
+  case SDL_CONTROLLER_BINDTYPE_BUTTON:
+    return binding.value.button >= 0 &&
+           binding.value.button < SDL_JoystickNumButtons(joy);
+  case SDL_CONTROLLER_BINDTYPE_AXIS:
+    return binding.value.axis >= 0 &&
+           binding.value.axis < SDL_JoystickNumAxes(joy);
+  case SDL_CONTROLLER_BINDTYPE_HAT:
+    return binding.value.hat.hat < SDL_JoystickNumHats(joy) &&
+           binding.value.hat.hat_mask != 0;
+  case SDL_CONTROLLER_BINDTYPE_NONE:
+  default:
+    return 0;
+  }
+}
+
+static int pad_axis_reachable(SDL_GameControllerAxis axis) {
+  return pad_binding_reachable(SDL_GameControllerGetBindForAxis(g_pad, axis));
+}
+
+static int pad_button_reachable(SDL_GameControllerButton button) {
+  return pad_binding_reachable(
+      SDL_GameControllerGetBindForButton(g_pad, button));
+}
+
+static void pad_refresh_topology(void) {
+  SDL_Joystick *joy = g_pad ? SDL_GameControllerGetJoystick(g_pad) : NULL;
+  if (!joy) {
+    g_pad_left_stick_reachable = 0;
+    g_pad_right_stick_reachable = 0;
+    g_pad_left_trigger_reachable = 0;
+    g_pad_right_trigger_reachable = 0;
+    g_pad_r3_reachable = 0;
+    g_cursor_left_modifier_enabled = 0;
+    g_cursor_modifier_held = 0;
+    g_cursor_modifier_prev = 0;
+    return;
+  }
+
+  g_pad_left_stick_reachable =
+      pad_axis_reachable(SDL_CONTROLLER_AXIS_LEFTX) &&
+      pad_axis_reachable(SDL_CONTROLLER_AXIS_LEFTY);
+  g_pad_right_stick_reachable =
+      pad_axis_reachable(SDL_CONTROLLER_AXIS_RIGHTX) &&
+      pad_axis_reachable(SDL_CONTROLLER_AXIS_RIGHTY);
+  g_pad_left_trigger_reachable =
+      pad_axis_reachable(SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+  g_pad_right_trigger_reachable =
+      pad_axis_reachable(SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+  g_pad_r3_reachable =
+      pad_button_reachable(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+  g_cursor_left_modifier_enabled = !g_pad_right_stick_reachable &&
+                                   g_pad_left_stick_reachable &&
+                                   g_pad_left_trigger_reachable;
+  g_cursor_modifier_held = 0;
+  g_cursor_modifier_prev = 0;
+
+  const char *pad_name = SDL_GameControllerName(g_pad);
+  debugPrintf("pad: opened %s raw=%d axes/%d buttons/%d hats "
+              "left=%s right=%s L2=%s R2=%s R3=%s\n",
+              pad_name ? pad_name : "?", SDL_JoystickNumAxes(joy),
+              SDL_JoystickNumButtons(joy), SDL_JoystickNumHats(joy),
+              g_pad_left_stick_reachable ? "yes" : "no",
+              g_pad_right_stick_reachable ? "yes" : "no",
+              g_pad_left_trigger_reachable ? "yes" : "no",
+              g_pad_right_trigger_reachable ? "yes" : "no",
+              g_pad_r3_reachable ? "yes" : "no");
+  if (g_cursor_left_modifier_enabled)
+    debugPrintf("cursor: no real right stick; hold L2 + left stick to move "
+                "the cursor, R2/R3 clicks\n");
+}
+
+static int pad_open_device(int device_index) {
+  SDL_GameController *candidate;
+  if (g_pad || device_index < 0 || !SDL_IsGameController(device_index))
+    return g_pad != NULL;
+  candidate = SDL_GameControllerOpen(device_index);
+  if (!candidate) {
+    debugPrintf("pad: open failed index=%d: %s\n", device_index,
+                SDL_GetError());
+    return 0;
+  }
+  g_pad = candidate;
+  pad_refresh_topology();
+  return 1;
+}
+
+static int cursor_modifier_down(void) {
+  int down;
+  int threshold;
+  if (!g_pad || !g_cursor_left_modifier_enabled)
+    return 0;
+  threshold = g_cursor_modifier_prev ? 10000 : 16000;
+  down = SDL_GameControllerGetAxis(
+             g_pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > threshold;
+  g_cursor_modifier_prev = down;
+  return down;
+}
 
 /* A common 12-button USB pad reports both triggers and stick clicks as plain
  * joystick buttons.  Older SDL controller databases expose its sticks but
@@ -511,10 +622,20 @@ static void update_cursor(float dt) {
   if (g_pad) {
     const float scale = 1.0f / 32767.0f;
     const float deadzone = 0.27f;
-    float rx = (float)SDL_GameControllerGetAxis(
-                   g_pad, SDL_CONTROLLER_AXIS_RIGHTX) * scale;
-    float ry = (float)SDL_GameControllerGetAxis(
-                   g_pad, SDL_CONTROLLER_AXIS_RIGHTY) * scale;
+    float rx = 0.0f;
+    float ry = 0.0f;
+    if (g_pad_right_stick_reachable) {
+      rx = (float)SDL_GameControllerGetAxis(
+               g_pad, SDL_CONTROLLER_AXIS_RIGHTX) * scale;
+      ry = (float)SDL_GameControllerGetAxis(
+               g_pad, SDL_CONTROLLER_AXIS_RIGHTY) * scale;
+    } else if (g_cursor_left_modifier_enabled && g_cursor_modifier_held) {
+      rx = (float)SDL_GameControllerGetAxis(
+               g_pad, SDL_CONTROLLER_AXIS_LEFTX) * scale;
+      ry = (float)SDL_GameControllerGetAxis(
+               g_pad, SDL_CONTROLLER_AXIS_LEFTY) * scale;
+      g_cursor_show = 2.0f;
+    }
     float magnitude = sqrtf(rx * rx + ry * ry);
     if (magnitude > deadzone) {
       float strength = (magnitude - deadzone) / (1.0f - deadzone);
@@ -690,20 +811,23 @@ static void update_pad(void) {
   debug_tap_step();
   if (!g_pad) {
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
-      if (SDL_IsGameController(i)) {
-        g_pad = SDL_GameControllerOpen(i);
-        if (g_pad)
-          debugPrintf("pad: opened %s\n", SDL_GameControllerName(g_pad));
+      if (pad_open_device(i))
         break;
-      }
     }
   }
-  if (!g_pad)
+  if (!g_pad) {
+    g_cursor_modifier_held = 0;
     return;
+  }
 
   Sint16 lx = SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_LEFTX);
   Sint16 ly = SDL_GameControllerGetAxis(g_pad, SDL_CONTROLLER_AXIS_LEFTY);
-  int stick_active = lx < -10000 || lx > 10000 || ly < -10000 || ly > 10000;
+  g_cursor_modifier_held = cursor_modifier_down();
+  int cursor_owns_left =
+      g_cursor_left_modifier_enabled && g_cursor_modifier_held;
+  int stick_active = !cursor_owns_left &&
+                     (lx < -10000 || lx > 10000 ||
+                      ly < -10000 || ly > 10000);
   uint32_t down = pad_buttons();
   int controller_used = down || pad_prev || stick_active;
 
@@ -720,8 +844,10 @@ static void update_pad(void) {
   if ((down & (1u << 21)) && !(pad_prev & (1u << 21)) && handleBackButtonPress)
     handleBackButtonPress(fake_env, NULL);
 
-  int left_now = ((down >> 18) & 1) || lx < -10000;
-  int right_now = ((down >> 19) & 1) || lx > 10000;
+  int left_now = ((down >> 18) & 1) ||
+                 (!cursor_owns_left && lx < -10000);
+  int right_now = ((down >> 19) & 1) ||
+                  (!cursor_owns_left && lx > 10000);
   int jump_now = (down >> 20) & 1;
   drive_key(left_now, left_prev, KEY_LEFT);
   drive_key(right_now, right_prev, KEY_RIGHT);
@@ -973,8 +1099,8 @@ static int gl_init(void) {
    * (KMSDRM and scaled panels differ).  Touch hitboxes and the viewport must
    * follow the real drawable, otherwise the HUD lands off-target on some
    * devices -- the zoom class of bug seen in the LEGO/LOTR ports. */
+  int draw_w = 0, draw_h = 0;
   {
-    int draw_w = 0, draw_h = 0;
     SDL_GL_GetDrawableSize(g_win, &draw_w, &draw_h);
     if (draw_w > 0 && draw_h > 0 &&
         (draw_w != screen_width || draw_h != screen_height)) {
@@ -992,12 +1118,14 @@ static int gl_init(void) {
   const GLubyte *renderer = glGetString(GL_RENDERER);
   const GLubyte *version = glGetString(GL_VERSION);
   const char *video_driver = SDL_GetCurrentVideoDriver();
-  /* Crossed-SONAME firmware (Mesa behind libGLESv1_CM.so.1, Mali blob behind
-   * the unversioned name) yields a context with an empty renderer that draws
-   * nothing.  Repair by re-exec with the blob preloaded; healthy stacks
-   * (including Panfrost, which reports a renderer) are never touched. */
-  glfix_maybe_reexec((const char *)renderer, video_driver,
-                     glfix_video_teardown);
+  /* Crossed-provider firmware can yield a real context whose renderer is empty
+   * and whose draws never reach the panel. Re-exec once with SDL's EGL/GLES
+   * paths bound to the same proven object; healthy stacks (including
+   * Panfrost, which reports a renderer) are never touched. */
+  glfix_maybe_reexec(
+      (const char *)renderer, video_driver, g_win != NULL,
+      SDL_GL_GetCurrentContext() == g_ctx, draw_w > 0 && draw_h > 0,
+      glfix_video_teardown);
   g_finish_before_swap = finish_before_swap_policy(video_driver);
   debugPrintf("gl: GLES1.1 %dx%d alpha=%d depth=%d driver='%s'\n", screen_width,
               screen_height, got_alpha, got_depth,
@@ -1246,12 +1374,18 @@ int main(int argc, char **argv) {
       if (e.type == SDL_QUIT)
         request_exit();
       else if (e.type == SDL_CONTROLLERDEVICEADDED && !g_pad) {
-        g_pad = SDL_GameControllerOpen(e.cdevice.which);
+        (void)pad_open_device(e.cdevice.which);
+      } else if (e.type == SDL_CONTROLLERDEVICEREMAPPED && g_pad &&
+                 e.cdevice.which ==
+                     SDL_JoystickInstanceID(
+                         SDL_GameControllerGetJoystick(g_pad))) {
+        pad_refresh_topology();
       } else if (e.type == SDL_CONTROLLERDEVICEREMOVED && g_pad &&
                  e.cdevice.which ==
                      SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(g_pad))) {
         SDL_GameControllerClose(g_pad);
         g_pad = NULL;
+        pad_refresh_topology();
       } else
         handle_pointer_event(&e);
     }

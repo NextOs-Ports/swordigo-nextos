@@ -41,9 +41,12 @@ A successful install creates `libswordigo.so`, `assets/` and `res/` inside
 [`INSTALLATION.md`](INSTALLATION.md).
 
 Updating from an earlier release preserves extracted data and saves. Version
-1.0.14 keeps the stable public executable name `swordigo-nextos`, preserves
-the stat-free instance lock and closes the PortMaster dialog before NXExtract
-or the game receives terminal input.
+1.0.15 keeps the stable public executable name `swordigo-nextos` and adds two
+capability-gated repairs. If SDL creates a real drawable but resolves EGL and
+GLES through different broken paths, the loader re-executes once with both
+providers bound to the same validated object. If a mapping advertises a right
+stick whose raw axes do not exist, the loader reports the real topology rather
+than trusting the host-wide stick count.
 
 Firmware note: on **NextOS / EmuELEC** EmulationStation lists launchers from
 `roms/ports_scripts/`, so `Swordigo.sh` also goes there while the game folder
@@ -83,12 +86,15 @@ behind, and the installer says exactly that in `nxextract.log`.
 | RB | back |
 | START | pause / menu |
 | Right stick | smooth on-screen cursor |
+| L2 + left stick | cursor on a controller that physically has no right stick |
 | R2 or R3 | cursor press / drag / release (touch) |
 | SELECT + START | quit |
 
-On many handhelds SELECT, START, L3 and R3 reach the system as
-`BTN_TRIGGER_HAPPY1..4`, outside any SDL mapping; the loader reads those codes
-straight from evdev, so they work even when the firmware does not declare them.
+The one-stick cursor fallback is enabled only from the opened controller's raw
+topology: both right-stick bindings must be unreachable, while both left axes
+and L2 must be real. Without L2, the left stick keeps its normal movement
+action; D-pad and face buttons are never repurposed. PortMaster's mapping
+remains the button-layout authority.
 
 ## Device support
 
@@ -97,12 +103,13 @@ Evidence level, never a promise:
 | Device / firmware | State |
 |---|---|
 | R36S / ArkOS-class (RK3326, Mali-G31, glibc 2.30, 640×480) | **physically validated** — clean install from the ZIP itself, on-device extraction, title, gameplay, audio and music, exit chord, frontend restored |
+| K36S / dArkOSRE (RK3326, Mali-G31, 640×480, one physical stick) | **runtime physically proven** — coherent Mali provider, non-black frame, audio/music and raw 2-axis/17-button topology measured on hardware |
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **physically validated** |
 | X5M / NextOS (Amlogic, Mali-G310, KMSDRM, 1920×1080) | **physically validated** — video, audio, music, controls, R2/R3 cursor press/drag/release |
 | AmberELEC / BusyBox without `stat -c` | v1.0.12 launcher/extraction physically accepted; the stat-free launcher contract remains mandatory |
 | Other AArch64 CFW with SDL2, OpenAL and GLES 1.1 | plausible, **not tested** |
 
-Those rows describe prior accepted releases. Version 1.0.14 is validated by
+Those rows describe prior accepted releases. Version 1.0.15 is validated by
 host/build/package gates first and is recorded as physically accepted only
 after a clean run of this exact ZIP.
 
@@ -121,7 +128,7 @@ stack canary is anchored in a thread-local pad because the game reads it from
 the Bionic TLS slot. `STUDY.md` has the full reverse-engineering notes.
 
 The public package has one launcher chain only:
-`Swordigo.sh → swordigo/swordigo-nextos`. The generated nxbootstrap 0.6.7
+`Swordigo.sh → swordigo/swordigo-nextos`. The generated nxbootstrap 0.6.8
 logic is self-contained in the visible launcher; there is no second-stage
 `run.sh` or bootstrap library. NXExtract 1.2.6 runs as an isolated foreground
 phase before the owner data gate. The game-specific OpenAL and graphics policy
@@ -250,12 +257,15 @@ exatamente isso no `nxextract.log`.
 | RB | voltar |
 | START | pausa / menu |
 | Analógico direito | cursor suave na tela |
+| L2 + analógico esquerdo | cursor quando o controle fisicamente não possui analógico direito |
 | R2 ou R3 | pressionar / arrastar / soltar o cursor (toque) |
 | SELECT + START | sair |
 
-Em vários portáteis SELECT, START, L3 e R3 chegam como
-`BTN_TRIGGER_HAPPY1..4`, fora de qualquer mapping da SDL; o loader lê esses
-códigos direto do evdev, então funcionam mesmo quando o firmware não os declara.
+O fallback para um único analógico só é habilitado pela topologia crua do
+controle aberto: os dois bindings direitos precisam ser inalcançáveis, enquanto
+os eixos esquerdos e L2 precisam existir de verdade. Sem segurar L2, o analógico
+esquerdo continua andando normalmente; D-pad e botões de face nunca são
+reaproveitados. O mapping do PortMaster continua sendo a autoridade do layout.
 
 ### Aparelhos
 
@@ -264,12 +274,13 @@ Nível de evidência, nunca promessa:
 | Aparelho / firmware | Estado |
 |---|---|
 | R36S / classe ArkOS (RK3326, Mali-G31, glibc 2.30, 640×480) | **validado fisicamente** — instalação limpa a partir do próprio ZIP, extração no aparelho, título, gameplay, áudio e música, atalho de saída, frontend restaurado |
+| K36S / dArkOSRE (RK3326, Mali-G31, 640×480, um analógico físico) | **runtime comprovado fisicamente** — provider Mali coerente, quadro não preto, áudio/música e topologia crua de 2 eixos/17 botões medidos no aparelho |
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **validado fisicamente** |
 | X5M / NextOS (Amlogic, Mali-G310, KMSDRM, 1920×1080) | **validado fisicamente** — vídeo, áudio, música, controles e cursor R2/R3 com pressionar/arrastar/soltar |
 | AmberELEC / BusyBox sem `stat -c` | launcher/extração da v1.0.12 aceitos fisicamente; o contrato sem `stat` continua obrigatório |
 | Outros CFW AArch64 com SDL2, OpenAL e GLES 1.1 | plausível, **não testado** |
 
-Essas linhas registram releases aceitas anteriormente. A v1.0.14 passa
+Essas linhas registram releases aceitas anteriormente. A v1.0.15 passa
 primeiro pelos gates de host/build/pacote e só é registrada como aceita
 fisicamente depois de um teste limpo deste mesmo ZIP.
 
@@ -288,7 +299,7 @@ fica ancorado num pad thread-local porque o jogo o lê do slot TLS do bionic.
 As notas completas de engenharia reversa estão em `STUDY.md`.
 
 O pacote público tem uma única cadeia de lançamento:
-`Swordigo.sh → swordigo/swordigo-nextos`. A lógica gerada do nxbootstrap 0.6.7
+`Swordigo.sh → swordigo/swordigo-nextos`. A lógica gerada do nxbootstrap 0.6.8
 fica autocontida no launcher visível; não existe `run.sh` nem biblioteca de
 bootstrap intermediária. O NXExtract 1.2.6 roda como fase isolada em
 foreground antes do gate dos dados. As políticas OpenAL e gráficas específicas

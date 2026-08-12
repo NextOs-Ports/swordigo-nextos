@@ -2,6 +2,7 @@
   "architecture": "aarch64",
   "argument_mode": "game-dir-and-passthrough",
   "enabled_quirks": [
+    "adapter.gl-provider-coherent-sdl-reexec",
     "adapter.gl-provider-reexec-preload",
     "adapter.gl-provider-probe-init-reexec",
     "game.swordigo.present-alpha-one",

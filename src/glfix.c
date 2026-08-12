@@ -10,11 +10,10 @@
  *
  * The one safe, observable condition is the empty renderer string measured on
  * the real context.  A healthy Mesa (Panfrost on ROCKNIX) reports a proper
- * renderer and is left completely alone.  When the condition holds and a Mali
- * blob exporting the GLES1 entry points exists, the fix re-executes the same
- * binary with LD_PRELOAD pointing at the blob: preloaded objects take over
- * symbol resolution ahead of the crossed SONAMEs.  LD_LIBRARY_PATH cannot do
- * this (the SONAME chain wins) — proven in the field before this fix.
+ * renderer and is left completely alone. When the condition holds and a Mali
+ * blob exporting both EGL and the GLES1 entry points exists, current adapters
+ * re-execute with SDL's EGL and GL provider variables bound to that exact same
+ * object. Older manifests retain the narrower LD_PRELOAD path for compatibility.
  *
  * Controls:
  *   SWORDIGO_GLFIX=0            disable entirely.
@@ -228,16 +227,36 @@ static void glfix_reexec_with_preload(const char *blob) {
   debugPrintf("glfix: execv failed; continuing without repair\n");
 }
 
+static void glfix_reexec_with_sdl_provider_pair(const char *blob) {
+  debugPrintf("glfix: re-executing with coherent SDL EGL/GLES provider=%s\n",
+              blob);
+  if (setenv("SDL_VIDEO_EGL_DRIVER", blob, 1) != 0 ||
+      setenv("SDL_VIDEO_GL_DRIVER", blob, 1) != 0 ||
+      setenv(GLFIX_MARKER, "1", 1) != 0) {
+    debugPrintf("glfix: failed to publish coherent SDL provider pair\n");
+    return;
+  }
+  if (g_saved_argv)
+    execv("/proc/self/exe", g_saved_argv);
+  debugPrintf("glfix: execv failed; continuing without repair\n");
+}
+
 /* Called once, right after the real context reported its renderer string.
  * Returns only when no repair applies; on repair it re-execs the process. */
 void glfix_maybe_reexec(const char *renderer, const char *video_backend,
-                        void (*teardown)(void)) {
-  if (!glfix_enabled("adapter.gl-provider-reexec-preload"))
+                        int window_opened, int context_current,
+                        int drawable_positive, void (*teardown)(void)) {
+  int coherent_enabled =
+      glfix_enabled("adapter.gl-provider-coherent-sdl-reexec");
+  int legacy_preload_enabled =
+      glfix_enabled("adapter.gl-provider-reexec-preload");
+  if (!coherent_enabled && !legacy_preload_enabled)
     return;
   if (!glfix_renderer_is_broken(renderer))
     return;
   if (getenv(GLFIX_MARKER)) {
-    debugPrintf("glfix: renderer still empty after preload; giving up\n");
+    debugPrintf("glfix: renderer still empty after one provider repair; "
+                "giving up\n");
     return;
   }
   char blob[1024];
@@ -246,11 +265,25 @@ void glfix_maybe_reexec(const char *renderer, const char *video_backend,
     debugPrintf("glfix: empty renderer but no usable Mali blob found\n");
     return;
   }
-  debugPrintf("glfix: empty renderer on the crossed-SONAME stack; "
-              "re-executing with the blob preloaded\n");
-  if (teardown)
-    teardown();
-  glfix_reexec_with_preload(blob);
+  if (coherent_enabled &&
+      gl_provider_plan_sdl_pair(
+          video_backend, renderer, blob, window_opened, context_current,
+          drawable_positive, 1, 1) == GL_PROVIDER_SDL_PAIR_BIND_COHERENT) {
+    debugPrintf("glfix: crossed SDL provider paths proven; binding one "
+                "coherent EGL/GLES object\n");
+    if (teardown)
+      teardown();
+    glfix_reexec_with_sdl_provider_pair(blob);
+    return;
+  }
+
+  if (legacy_preload_enabled) {
+    debugPrintf("glfix: empty renderer on the legacy crossed-SONAME stack; "
+                "re-executing with the blob preloaded\n");
+    if (teardown)
+      teardown();
+    glfix_reexec_with_preload(blob);
+  }
 }
 
 /* GL init died before any window existed: the provider the linker resolved

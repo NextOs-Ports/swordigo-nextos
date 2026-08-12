@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.15 — 2026-08-12
+
+- Fixed the dArkOSRE crossed-provider black screen by measuring the failed
+  live stack, validating one transport-compatible Mali object, tearing video
+  down and re-executing once with `SDL_VIDEO_EGL_DRIVER` and
+  `SDL_VIDEO_GL_DRIVER` bound to that same object. Healthy renderers and
+  unproven candidates remain untouched; the legacy preload and pre-context
+  repairs remain available under their existing opt-in quirks.
+- Fixed false two-stick mappings. Every SDL binding is now checked against the
+  raw axis/button/hat counts of the opened joystick, so `rightx:a2/righty:a3`
+  cannot manufacture a right stick on two-axis hardware.
+- Added the one-stick cursor bridge: when the raw controller proves that the
+  right stick is absent and L2 plus the left stick are real, hold L2 and use
+  the left stick for the polished cursor; R2/R3 keeps press/drag/release. The
+  left stick remains normal movement without L2, and D-pad/face buttons are
+  never stolen.
+- Updated the generated launcher to nxbootstrap 0.6.8. It observes dArkOSRE
+  through two regular firmware markers when `.OS` is absent, for logging and
+  protected mod selection only, while preserving the permanent stat-free,
+  owner-only early-log, PM_PIPE and exactly-once `pm_finish` gates.
+
 ## 1.0.14 — 2026-08-12
 
 - Regenerated only the self-contained launcher from immutable

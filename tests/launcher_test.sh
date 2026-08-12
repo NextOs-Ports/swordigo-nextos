@@ -86,6 +86,8 @@ if grep -Eq '(^|[;&|[:space:]])stat[[:space:]]+-' "$LAUNCHER"; then
 fi
 grep -Fq 'adapter.gl-provider-reexec-preload' "$LAUNCHER" ||
   fail 'launcher lost the post-context provider repair contract'
+grep -Fq 'adapter.gl-provider-coherent-sdl-reexec' "$LAUNCHER" ||
+  fail 'launcher lost the coherent SDL EGL/GLES provider repair contract'
 grep -Fq 'adapter.gl-provider-probe-init-reexec' "$LAUNCHER" ||
   fail 'launcher lost the pre-context provider repair contract'
 if ! python3 - "$LAUNCHER" <<'PY'
@@ -141,6 +143,8 @@ fi
 # grep without -q: -q quits early and SIGPIPEs strings under pipefail.
 LC_ALL=C strings "$LOADER" | grep 'SWORDIGO_GLFIX' >/dev/null ||
   fail 'loader lost the glfix provider repair'
+LC_ALL=C strings "$LOADER" | grep 'SDL_VIDEO_GL_DRIVER' >/dev/null ||
+  fail 'loader lost the coherent SDL provider pair'
 grep -q 'glfix_maybe_reexec' "$ROOT/src/main.c" ||
   fail 'loader source no longer calls the glfix repair'
 grep -q 'swordigo_contract_quirk_enabled' "$ROOT/src/glfix.c" ||
