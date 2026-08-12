@@ -86,15 +86,14 @@ behind, and the installer says exactly that in `nxextract.log`.
 | RB | back |
 | START | pause / menu |
 | Right stick | smooth on-screen cursor |
-| L2 + left stick | cursor on a controller that physically has no right stick |
 | R2 or R3 | cursor press / drag / release (touch) |
 | SELECT + START | quit |
 
-The one-stick cursor fallback is enabled only from the opened controller's raw
-topology: both right-stick bindings must be unreachable, while both left axes
-and L2 must be real. Without L2, the left stick keeps its normal movement
-action; D-pad and face buttons are never repurposed. PortMaster's mapping
-remains the button-layout authority.
+PortMaster's mapping remains the button-layout authority, but the loader also
+checks every binding against the raw joystick topology. A firmware that omits
+`ABS_RX/ABS_RY` cannot be repaired inside a port because no movement events
+reach SDL; its device-tree/controller configuration must expose the physical
+right stick.
 
 ## Device support
 
@@ -103,7 +102,7 @@ Evidence level, never a promise:
 | Device / firmware | State |
 |---|---|
 | R36S / ArkOS-class (RK3326, Mali-G31, glibc 2.30, 640×480) | **physically validated** — clean install from the ZIP itself, on-device extraction, title, gameplay, audio and music, exit chord, frontend restored |
-| K36S / dArkOSRE (RK3326, Mali-G31, 640×480, one physical stick) | **runtime physically proven** — coherent Mali provider, non-black frame, audio/music and raw 2-axis/17-button topology measured on hardware |
+| K36S / dArkOSRE (RK3326, Mali-G31, 640×480) | **physically validated** — clean NXExtract, coherent Mali provider, non-black frame, audio/music, normal right-stick cursor and clicks; the firmware DTB must expose `ABS_RX/ABS_RY` instead of carrying `skip-absr` |
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **physically validated** |
 | X5M / NextOS (Amlogic, Mali-G310, KMSDRM, 1920×1080) | **physically validated** — video, audio, music, controls, R2/R3 cursor press/drag/release |
 | AmberELEC / BusyBox without `stat -c` | v1.0.12 launcher/extraction physically accepted; the stat-free launcher contract remains mandatory |
@@ -257,15 +256,14 @@ exatamente isso no `nxextract.log`.
 | RB | voltar |
 | START | pausa / menu |
 | Analógico direito | cursor suave na tela |
-| L2 + analógico esquerdo | cursor quando o controle fisicamente não possui analógico direito |
 | R2 ou R3 | pressionar / arrastar / soltar o cursor (toque) |
 | SELECT + START | sair |
 
-O fallback para um único analógico só é habilitado pela topologia crua do
-controle aberto: os dois bindings direitos precisam ser inalcançáveis, enquanto
-os eixos esquerdos e L2 precisam existir de verdade. Sem segurar L2, o analógico
-esquerdo continua andando normalmente; D-pad e botões de face nunca são
-reaproveitados. O mapping do PortMaster continua sendo a autoridade do layout.
+O mapping do PortMaster continua sendo a autoridade do layout, mas o loader
+também confere cada binding contra a topologia crua do joystick. Um firmware
+que omite `ABS_RX/ABS_RY` não pode ser corrigido dentro do port, pois nenhum
+evento de movimento chega à SDL; a configuração do controle/device tree do
+firmware precisa expor o analógico direito físico.
 
 ### Aparelhos
 
@@ -274,7 +272,7 @@ Nível de evidência, nunca promessa:
 | Aparelho / firmware | Estado |
 |---|---|
 | R36S / classe ArkOS (RK3326, Mali-G31, glibc 2.30, 640×480) | **validado fisicamente** — instalação limpa a partir do próprio ZIP, extração no aparelho, título, gameplay, áudio e música, atalho de saída, frontend restaurado |
-| K36S / dArkOSRE (RK3326, Mali-G31, 640×480, um analógico físico) | **runtime comprovado fisicamente** — provider Mali coerente, quadro não preto, áudio/música e topologia crua de 2 eixos/17 botões medidos no aparelho |
+| K36S / dArkOSRE (RK3326, Mali-G31, 640×480) | **validado fisicamente** — NXExtract limpo, provider Mali coerente, quadro não preto, áudio/música, cursor normal no analógico direito e cliques; o DTB do firmware precisa expor `ABS_RX/ABS_RY` em vez de conter `skip-absr` |
 | NextOS Elite (Amlogic, Mali-450, glibc 2.43) | **validado fisicamente** |
 | X5M / NextOS (Amlogic, Mali-G310, KMSDRM, 1920×1080) | **validado fisicamente** — vídeo, áudio, música, controles e cursor R2/R3 com pressionar/arrastar/soltar |
 | AmberELEC / BusyBox sem `stat -c` | launcher/extração da v1.0.12 aceitos fisicamente; o contrato sem `stat` continua obrigatório |

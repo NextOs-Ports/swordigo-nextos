@@ -11,11 +11,11 @@
 - Fixed false two-stick mappings. Every SDL binding is now checked against the
   raw axis/button/hat counts of the opened joystick, so `rightx:a2/righty:a3`
   cannot manufacture a right stick on two-axis hardware.
-- Added the one-stick cursor bridge: when the raw controller proves that the
-  right stick is absent and L2 plus the left stick are real, hold L2 and use
-  the left stick for the polished cursor; R2/R3 keeps press/drag/release. The
-  left stick remains normal movement without L2, and D-pad/face buttons are
-  never stolen.
+- Identified the remaining dArkOSRE input failure as firmware configuration,
+  not a port mapping: its active DTB carried `skip-absr`, so the kernel omitted
+  `ABS_RX/ABS_RY` for a physically present right stick. With that firmware flag
+  removed and `invert-absrx`/`invert-absry` set, SDL reports all four axes and
+  the normal right-stick cursor works. The port never edits firmware or `/boot`.
 - Updated the generated launcher to nxbootstrap 0.6.8. It observes dArkOSRE
   through two regular firmware markers when `.OS` is absent, for logging and
   protected mod selection only, while preserving the permanent stat-free,
