@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.14 — 2026-08-12
+
+- Regenerated only the self-contained launcher from immutable
+  `nxbootstrap-v0.6.7` at framework commit `3ad5d94`. Before NXExtract or the
+  game starts, it now closes the live PortMaster dialog through the official
+  `PortMasterDialogExit` API and proves that `PM_PIPE` was cleared.
+- Preserved the cumulative stat-free instance lock, early per-process
+  diagnostic and exactly-once `pm_finish` cleanup. The approved Swordigo
+  loader is byte-identical to v1.0.13; gameplay, graphics, audio, controls,
+  extraction and owner data are unchanged.
+- Physically validated the exact candidate ZIP on an ArkOS RK3326/Mali-G31
+  device with a deliberately failing `stat` in `PATH`: clean APK extraction
+  committed all 941 assets and 9 music files transactionally, then the game
+  reached a non-black 640×480 frame with OpenAL/music and exited with status 0.
+
 ## 1.0.13 — 2026-08-10
 
 - Regenerated the self-contained launcher from the canonical nxbootstrap 0.6.3

@@ -3,7 +3,7 @@
   "source_root": ".",
   "package": {
     "id": "swordigo",
-    "version": "1.0.13",
+    "version": "1.0.14",
     "profile": "universal-portmaster",
     "launcher": "Swordigo.sh",
     "launcher_chain": [
@@ -11,7 +11,7 @@
     ],
     "launcher_contract": {
       "generator": "nxbootstrap",
-      "version": "0.6.3",
+      "version": "0.6.7",
       "config_path": "swordigo/nxport.json",
       "config_sha256": "c2c7108bdd07c9ed34bef0448e242d061bea8239739c00e180813263de2eeda4"
     },
@@ -102,7 +102,7 @@
       "target": "Swordigo.sh",
       "kind": "launcher",
       "mode": "0755",
-      "sha256": "6799da3c1dbca00b119640df249998cd77914f41dfdff3a9444bc6c165c0bd52"
+      "sha256": "a02d546fcff1703d7f419c076220b294b3c3f36eaa2f804fa249f845216b0e93"
     },
     {
       "source": "swordigo/nxport.json",
@@ -153,14 +153,14 @@
       "target": "swordigo/README.md",
       "kind": "payload",
       "mode": "0644",
-      "sha256": "d7864162496dfa89dade1488ae22544bef20a88c2a00c89f128b79728d3867fc"
+      "sha256": "bf0127cbbac0e240bee095280c075f99d0ecf2287d84b403cc4990e75502dee9"
     },
     {
       "source": "INSTALLATION.md",
       "target": "swordigo/INSTALLATION.md",
       "kind": "payload",
       "mode": "0644",
-      "sha256": "77fb182c6fd6f1ad15873b69f7f7d02e48d89d4b346ea50d5d97b45c79122352"
+      "sha256": "ec32d44235053f091b22862b482c2df3ef61407d0c90bc298fb089014d39827e"
     },
     {
       "source": "NOTICE.md",
@@ -181,7 +181,7 @@
       "target": "swordigo/version.txt",
       "kind": "payload",
       "mode": "0644",
-      "sha256": "5824fda1c95e4d81285e2033e99b2f2e239814fac7bef865cb49a451f568efe7"
+      "sha256": "33e81f2f85426cbf27b4346ab5c03b6676b285bbf94a99e679ac04ee3513f709"
     },
     {
       "source": "package/GAMEDATA.txt",

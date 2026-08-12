@@ -73,13 +73,15 @@ for needle in \
   'wait "$game_pid"' \
   "printf '\\033c'" \
   'pm_platform_helper' \
+  'NXBOOTSTRAP_DIALOG_PIPE=${PM_PIPE:-}' \
+  'PortMasterDialogExit' \
+  'PM_PIPE remained after close request' \
   'pm_finish' \
   'swordigo-nextos'
 do
   grep -Fq "$needle" "$LAUNCHER" || fail "launcher lacks canonical line: $needle"
 done
-if grep -Fq 'stat -L -c' "$LAUNCHER" ||
-   grep -Fq 'stat -L -t' "$LAUNCHER"; then
+if grep -Eq '(^|[;&|[:space:]])stat[[:space:]]+-' "$LAUNCHER"; then
   fail 'launcher still requires the external stat command'
 fi
 grep -Fq 'adapter.gl-provider-reexec-preload' "$LAUNCHER" ||
