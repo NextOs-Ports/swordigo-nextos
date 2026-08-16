@@ -1,17 +1,1 @@
-1.2.6
-upstream: nextos_ports_android/suportando_outros_devices/extrator-universal @ 1.2.6
-nxextract.py sha256=a4a8e5d3bf2a1344491e27921c54430ee9b4e3fedd0160631da96734fa3d5170
-nxextract-ui sha256=046afb583f5a211c946495e639409f81d9cfec706788eeccb7924b0e8e5a50b6
-nxextract-runtime-env.sh sha256=332919a9960d4317563b647f9932d1a4367da147a425fe2f78eafd706f01563f
-run-extractor.sh sha256=179b72f02b9dfdf3ed1bdc382d074fb4ef07f83e3d62cfccfc74a950e68679c2
-extractor.json sha256=b0af1e28929e8c4c7b3d355ce5b682ec2da66d029dbb0eee50000f202439eba8
-patches locais: 0
-
-Builds de APK validadas nesta receita (registro de suporte, NAO gate:
-a receita valida por ESTRUTURA e aceita builds novas sem mudar codigo):
-  1.4.12-47 apkmirror (arm64-v8a,armeabi-v7a) ......... aceito
-  1.4.12 build alternativa (mod) ...................... aceito
-
-Formas de entrada validadas:
-  - APK solto em gamedata/ ............................ aceito
-  - APK com recursos colidindo por caixa (res/9N vs 9n)  aceito
+1.2.10
