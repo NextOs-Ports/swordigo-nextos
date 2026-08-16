@@ -164,6 +164,15 @@ GAMEDIR="/$directory/ports/swordigo"
 cd "$GAMEDIR" || exit 1
 GAMEDIR=$(pwd -P)
 
+# Record whether this run could put an image on the panel at all.  A launch
+# from a remote shell can fail to open a window for reasons that have nothing
+# to do with the game, and a black frame collected that way is evidence about
+# the harness, not the port.  The frontend starts us without any SSH_* in the
+# environment; a remote operator always carries them.
+if [ -z "$SSH_CONNECTION" ] && [ -z "$SSH_TTY" ] && [ -z "$SSH_CLIENT" ]; then
+  export NXLAUNCH_FRONTEND=1
+fi
+
 [ -s "$GAMEDIR/log.txt" ] && mv -f "$GAMEDIR/log.txt" "$GAMEDIR/log.prev.txt" 2>/dev/null
 if ! exec > "$GAMEDIR/log.txt" 2>&1; then
   printf 'nxbootstrap: cannot open the runtime log\n' >&2

@@ -1225,22 +1225,60 @@ static void restore_present_state(const PresentState *state) {
 static double g_frame_proof_best = -1.0;
 static int g_frame_proof_samples;
 
+/* Mirrors nxgl_classify_launch_context_v2. A launch that could never put an
+ * image on the panel cannot be used to accuse the port of drawing nothing. */
+static const char *launch_context_name(int *conclusive) {
+  if (getenv("SSH_CONNECTION") || getenv("SSH_TTY") || getenv("SSH_CLIENT")) {
+    *conclusive = 0;
+    return "remote";
+  }
+  if (getenv("NXLAUNCH_FRONTEND")) {
+    *conclusive = 1;
+    return "frontend";
+  }
+  const char *tty = ttyname(0);
+  if (tty && strncmp(tty, "/dev/tty", 8) == 0 && tty[8] >= '0' &&
+      tty[8] <= '9') {
+    *conclusive = 1;
+    return "console";
+  }
+  *conclusive = 0;
+  return "unknown";
+}
+
 static void frame_proof_verdict(void) {
+  int conclusive = 0;
+  const char *context = launch_context_name(&conclusive);
+
   if (g_frame_proof_samples <= 0) {
-    debugPrintf("gl: frame proof verdict=UNKNOWN samples=0 "
-                "(run ended before the first probe)\n");
+    debugPrintf("gl: frame proof verdict=UNKNOWN samples=0 launch=%s "
+                "(run ended before the first probe)\n",
+                context);
     return;
   }
   int black = g_frame_proof_best < FRAME_PROOF_MIN_NON_BLACK;
-  debugPrintf("gl: frame proof verdict=%s samples=%d best_non_black=%.1f%%\n",
-              black ? "BLACK" : "OK", g_frame_proof_samples,
-              g_frame_proof_best);
+  /* A drawn frame proves the port draws however it was launched. An empty one
+   * only accuses the port when the launch could have produced an image. */
+  const char *verdict = !black          ? "OK"
+                        : conclusive    ? "BLACK"
+                                        : "INCONCLUSIVE";
+  debugPrintf("gl: frame proof verdict=%s samples=%d best_non_black=%.1f%% "
+              "launch=%s\n",
+              verdict, g_frame_proof_samples, g_frame_proof_best, context);
+  if (black && !conclusive)
+    debugPrintf("gl: this launch cannot prove an image (launch=%s); re-test "
+                "from the device frontend before blaming the port\n",
+                context);
   printf("NXEVENT {\"schema\":\"nx-event-v1\",\"source\":\"gl\","
          "\"phase\":\"runtime\",\"status\":\"%s\",\"reason_code\":%d,"
          "\"details\":{\"frame_proof\":\"%s\",\"samples\":%d,"
-         "\"best_non_black_pct\":%.1f}}\n",
-         black ? "fail" : "ok", black ? 6301 : 6300, black ? "black" : "ok",
-         g_frame_proof_samples, g_frame_proof_best);
+         "\"best_non_black_pct\":%.1f,\"launch_context\":\"%s\","
+         "\"conclusive\":%s}}\n",
+         (black && conclusive) ? "fail" : "ok",
+         !black ? 6300 : (conclusive ? 6301 : 6302),
+         !black ? "ok" : (conclusive ? "black" : "inconclusive"),
+         g_frame_proof_samples, g_frame_proof_best, context,
+         conclusive ? "true" : "false");
   fflush(stdout);
 }
 
@@ -1348,6 +1386,15 @@ int main(int argc, char **argv) {
                   "adapter.gl-provider-reexec-preload") ? "yes" : "no",
               swordigo_contract_quirk_enabled(
                   "adapter.gl-provider-probe-init-reexec") ? "yes" : "no");
+  /* Emit the launch receipt before anything can fail: a run that dies in GL
+   * init is exactly the run whose context someone will need in order to know
+   * whether the failure means anything about the port. */
+  {
+    int conclusive = 0;
+    const char *context = launch_context_name(&conclusive);
+    debugPrintf("launch: context=%s can-prove-image=%s\n", context,
+                conclusive ? "yes" : "no");
+  }
   check_data();
 
   size_t heap_size = (size_t)MEMORY_MB * 1024 * 1024;
