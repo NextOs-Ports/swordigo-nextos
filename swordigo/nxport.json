@@ -15,7 +15,7 @@
   "launcher_name": "Swordigo.sh",
   "nxextract": {
     "mode": "yes",
-    "version": "1.2.6"
+    "version": "1.2.10"
   },
   "prepare_script": "",
   "private_library_paths": [],
@@ -30,6 +30,7 @@
   ],
   "required_files": [
     "swordigo-nextos",
+    "nxsplash-nextos",
     "libswordigo.so",
     "res/7c.mp3",
     "alsoft.conf"
