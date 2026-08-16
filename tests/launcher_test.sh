@@ -164,7 +164,7 @@ fi
 
 python3 -B "$ROOT/nxextract.py" recipe-check --recipe "$ROOT/extractor.json" \
   >/dev/null || fail 'NXExtract rejected the Swordigo recipe'
-grep -q '^1[.]2[.]6$' "$ROOT/nxextract-version.txt" ||
-  fail 'NXExtract version is not 1.2.6'
+grep -q '^1[.]2[.]10$' "$ROOT/nxextract-version.txt" ||
+  fail 'NXExtract version is not 1.2.10'
 
 printf 'swordigo single-launcher tests passed\n'

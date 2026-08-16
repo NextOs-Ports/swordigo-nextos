@@ -1071,6 +1071,13 @@ static int gl_init(void) {
                              screen_height, SDL_WINDOW_OPENGL | fullscreen);
   }
   if (!g_win) {
+    setenv("SDL_VIDEO_EGL_DRIVER", "libEGL.so", 1);
+    setenv("SDL_VIDEO_GL_DRIVER", "libGLESv2.so", 1);
+    g_win = SDL_CreateWindow("Swordigo", SDL_WINDOWPOS_UNDEFINED,
+                             SDL_WINDOWPOS_UNDEFINED, screen_width,
+                             screen_height, SDL_WINDOW_OPENGL | fullscreen);
+  }
+  if (!g_win) {
     fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
     /* AeUX-class firmware: the resolved EGL provider refuses the kernel
      * driver (user/kernel API mismatch) and no window ever exists.  Probe

@@ -121,7 +121,7 @@
       "architecture": "aarch64",
       "build_profile": "universal-low-glibc",
       "provenance": "build_universal.sh; pinned offline Debian Buster image sha256:036c7910ea53bc78cc213452afa92fa83d55de1c51ae54f315af58b5a41a45cf; target sysroot used for headers only",
-      "sha256": "e888b96fa20c8261db0729857f952d51f7ec9768f9396f12b329e26e4432b2dd",
+      "sha256": "23a7094bd909855f3172e2b9b8642d368c316b3b3907494269ef7780c363cdb9",
       "needed": [
         "libSDL2-2.0.so.0",
         "libc.so.6",
