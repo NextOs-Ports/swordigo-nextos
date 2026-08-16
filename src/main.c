@@ -25,6 +25,7 @@
 #include "error.h"
 #include "imports.h"
 #include "jni_fake.h"
+#include "gl_latebind.h"
 #include "music_player.h"
 #include "so_util.h"
 #include "util.h"
@@ -1125,6 +1126,8 @@ static int gl_init(void) {
   const GLubyte *renderer = glGetString(GL_RENDERER);
   const GLubyte *version = glGetString(GL_VERSION);
   const char *video_driver = SDL_GetCurrentVideoDriver();
+  gl_latebind_configure(video_driver, (const char *)renderer,
+                        (const char *)version);
   /* Crossed-provider firmware can yield a real context whose renderer is empty
    * and whose draws never reach the panel. Re-exec once with SDL's EGL/GLES
    * paths bound to the same proven object; healthy stacks (including
