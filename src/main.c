@@ -1072,11 +1072,39 @@ static int gl_init(void) {
                              screen_height, SDL_WINDOW_OPENGL | fullscreen);
   }
   if (!g_win) {
+    /* Firmware whose versioned SONAMEs resolve to a driverless Mesa can still
+     * open through the unversioned names.  The provider named here must match
+     * the client API still pending in the SDL attributes: this game asks for
+     * GLES 1.1, and naming the GLESv2 provider buys a context without the
+     * fixed-function pipeline -- the game keeps drawing, every call is a
+     * no-op and the panel stays black with audio running.  Restore the
+     * previous values when the attempt fails, so the later provider probe is
+     * not fighting an environment this one poisoned. */
+    char *prev_egl = getenv("SDL_VIDEO_EGL_DRIVER");
+    char *prev_gl = getenv("SDL_VIDEO_GL_DRIVER");
+    prev_egl = prev_egl ? strdup(prev_egl) : NULL;
+    prev_gl = prev_gl ? strdup(prev_gl) : NULL;
     setenv("SDL_VIDEO_EGL_DRIVER", "libEGL.so", 1);
-    setenv("SDL_VIDEO_GL_DRIVER", "libGLESv2.so", 1);
+    setenv("SDL_VIDEO_GL_DRIVER", "libGLESv1_CM.so", 1);
     g_win = SDL_CreateWindow("Swordigo", SDL_WINDOWPOS_UNDEFINED,
                              SDL_WINDOWPOS_UNDEFINED, screen_width,
                              screen_height, SDL_WINDOW_OPENGL | fullscreen);
+    if (g_win) {
+      debugPrintf("gl: opened with portable GLES1 provider names\n");
+    } else {
+      debugPrintf("gl: portable GLES1 provider names refused (%s)\n",
+                  SDL_GetError());
+      if (prev_egl)
+        setenv("SDL_VIDEO_EGL_DRIVER", prev_egl, 1);
+      else
+        unsetenv("SDL_VIDEO_EGL_DRIVER");
+      if (prev_gl)
+        setenv("SDL_VIDEO_GL_DRIVER", prev_gl, 1);
+      else
+        unsetenv("SDL_VIDEO_GL_DRIVER");
+    }
+    free(prev_egl);
+    free(prev_gl);
   }
   if (!g_win) {
     fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
@@ -1128,6 +1156,20 @@ static int gl_init(void) {
   const char *video_driver = SDL_GetCurrentVideoDriver();
   gl_latebind_configure(video_driver, (const char *)renderer,
                         (const char *)version);
+  /* This game is fixed-function GLES 1.1.  A context that reports ES 2.x/3.x
+   * without the ES-CM profile has no fixed-function pipeline, so every draw
+   * the engine issues is silently dropped and the panel stays black while
+   * audio and input keep working.  Name it in the log: that symptom is
+   * otherwise indistinguishable from a dead engine. */
+  {
+    const char *v = version ? (const char *)version : "";
+    int is_es1 = (strstr(v, "ES-CM") != NULL) || (strstr(v, "ES 1.") != NULL);
+    if (!is_es1)
+      debugPrintf(
+          "gl: WARNING context is '%s' but this engine is fixed-function "
+          "GLES1.1 -- draws will not reach the panel\n",
+          v[0] ? v : "?");
+  }
   /* Crossed-provider firmware can yield a real context whose renderer is empty
    * and whose draws never reach the panel. Re-exec once with SDL's EGL/GLES
    * paths bound to the same proven object; healthy stacks (including
