@@ -1071,41 +1071,13 @@ static int gl_init(void) {
                              SDL_WINDOWPOS_UNDEFINED, screen_width,
                              screen_height, SDL_WINDOW_OPENGL | fullscreen);
   }
-  if (!g_win) {
-    /* Firmware whose versioned SONAMEs resolve to a driverless Mesa can still
-     * open through the unversioned names.  The provider named here must match
-     * the client API still pending in the SDL attributes: this game asks for
-     * GLES 1.1, and naming the GLESv2 provider buys a context without the
-     * fixed-function pipeline -- the game keeps drawing, every call is a
-     * no-op and the panel stays black with audio running.  Restore the
-     * previous values when the attempt fails, so the later provider probe is
-     * not fighting an environment this one poisoned. */
-    char *prev_egl = getenv("SDL_VIDEO_EGL_DRIVER");
-    char *prev_gl = getenv("SDL_VIDEO_GL_DRIVER");
-    prev_egl = prev_egl ? strdup(prev_egl) : NULL;
-    prev_gl = prev_gl ? strdup(prev_gl) : NULL;
-    setenv("SDL_VIDEO_EGL_DRIVER", "libEGL.so", 1);
-    setenv("SDL_VIDEO_GL_DRIVER", "libGLESv1_CM.so", 1);
-    g_win = SDL_CreateWindow("Swordigo", SDL_WINDOWPOS_UNDEFINED,
-                             SDL_WINDOWPOS_UNDEFINED, screen_width,
-                             screen_height, SDL_WINDOW_OPENGL | fullscreen);
-    if (g_win) {
-      debugPrintf("gl: opened with portable GLES1 provider names\n");
-    } else {
-      debugPrintf("gl: portable GLES1 provider names refused (%s)\n",
-                  SDL_GetError());
-      if (prev_egl)
-        setenv("SDL_VIDEO_EGL_DRIVER", prev_egl, 1);
-      else
-        unsetenv("SDL_VIDEO_EGL_DRIVER");
-      if (prev_gl)
-        setenv("SDL_VIDEO_GL_DRIVER", prev_gl, 1);
-      else
-        unsetenv("SDL_VIDEO_GL_DRIVER");
-    }
-    free(prev_egl);
-    free(prev_gl);
-  }
+  /* Deliberately no "portable provider name" fallback here.  Forcing
+   * SDL_VIDEO_GL_DRIVER at this point opens a window that succeeds and draws
+   * nothing (the engine is fixed-function GLES 1.1; the unversioned providers
+   * on crossed-SONAME firmware hand back an ES 3.x context), and a successful
+   * window short-circuits the proven repair below -- glfix never gets to probe
+   * a real provider and re-exec with it preloaded.  Failing here is what makes
+   * the repair run. */
   if (!g_win) {
     fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
     /* AeUX-class firmware: the resolved EGL provider refuses the kernel
@@ -1243,6 +1215,35 @@ static void restore_present_state(const PresentState *state) {
  * paid for: colour with alpha 0 means the scanout composited the frame away,
  * colour with alpha 255 means the picture is fine and the wrong surface is
  * being presented, and an empty frame means the engine really drew nothing. */
+/* A run that draws nothing is indistinguishable from a healthy run in every
+ * signal a launcher normally has: the loop ticks, audio plays, input arrives
+ * and the process exits 0.  Sampling the presented frame more than once and
+ * publishing a single verdict is what makes "black screen" a reportable
+ * result instead of something a human has to notice on the panel. */
+#define FRAME_PROOF_MIN_NON_BLACK 0.5 /* percent of pixels */
+
+static double g_frame_proof_best = -1.0;
+static int g_frame_proof_samples;
+
+static void frame_proof_verdict(void) {
+  if (g_frame_proof_samples <= 0) {
+    debugPrintf("gl: frame proof verdict=UNKNOWN samples=0 "
+                "(run ended before the first probe)\n");
+    return;
+  }
+  int black = g_frame_proof_best < FRAME_PROOF_MIN_NON_BLACK;
+  debugPrintf("gl: frame proof verdict=%s samples=%d best_non_black=%.1f%%\n",
+              black ? "BLACK" : "OK", g_frame_proof_samples,
+              g_frame_proof_best);
+  printf("NXEVENT {\"schema\":\"nx-event-v1\",\"source\":\"gl\","
+         "\"phase\":\"runtime\",\"status\":\"%s\",\"reason_code\":%d,"
+         "\"details\":{\"frame_proof\":\"%s\",\"samples\":%d,"
+         "\"best_non_black_pct\":%.1f}}\n",
+         black ? "fail" : "ok", black ? 6301 : 6300, black ? "black" : "ok",
+         g_frame_proof_samples, g_frame_proof_best);
+  fflush(stdout);
+}
+
 static void probe_frame_once(int width, int height) {
   if (width <= 0 || height <= 0 || width > 32768 || height > 32768) {
     debugPrintf("gl: frame probe unavailable (invalid drawable %dx%d)\n", width,
@@ -1275,9 +1276,13 @@ static void probe_frame_once(int width, int height) {
     else if (p[3] == 0)
       transparent++;
   }
+  double non_black = coloured * 100.0 / pixels;
+  g_frame_proof_samples++;
+  if (non_black > g_frame_proof_best)
+    g_frame_proof_best = non_black;
   debugPrintf("gl: frame probe %dx%d rgb_non_black=%.1f%% alpha255=%.1f%% "
               "alpha0=%.1f%%\n",
-              width, height, coloured * 100.0 / pixels, opaque * 100.0 / pixels,
+              width, height, non_black, opaque * 100.0 / pixels,
               transparent * 100.0 / pixels);
   free(buffer);
 }
@@ -1494,7 +1499,9 @@ int main(int argc, char **argv) {
     cursor_draw_overlay();
     crash_diag_set_phase(CRASH_PHASE_PRESENT_ALPHA);
     present_opaque_alpha();
-    if (frame == 300) {
+    /* Several samples, not one: a title card can legitimately be black at the
+     * first sample and a single reading turns that into a false verdict. */
+    if (frame == 300 || frame == 600 || frame == 900) {
       crash_diag_set_phase(CRASH_PHASE_FRAME_PROBE);
       probe_frame_once(screen_width, screen_height);
     }
@@ -1506,6 +1513,7 @@ int main(int argc, char **argv) {
     SDL_GL_SwapWindow(g_win);
   }
 
+  frame_proof_verdict();
   crash_diag_set_phase(CRASH_PHASE_SHUTDOWN);
   pthread_t d;
   if (pthread_create(&d, NULL, exit_deadline, NULL) == 0)
