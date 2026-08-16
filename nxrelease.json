@@ -11,7 +11,7 @@
     ],
     "launcher_contract": {
       "generator": "nxbootstrap",
-      "version": "0.6.15",
+      "version": "0.6.16",
       "config_path": "swordigo/nxport.json",
       "config_sha256": "fc169472ba8558db7b2be60fffa1c206a0f900fb559ac26ae77497eab7f666d8"
     },
@@ -104,7 +104,7 @@
       "target": "Swordigo.sh",
       "kind": "launcher",
       "mode": "0755",
-      "sha256": "5e20261807abc14cfe49e994f507fa61f20fd8a91c01290cdda934a434393a86"
+      "sha256": "a25139fe8388dd583423eee61bb722158ab4cf4dab772af35a3e960980b4094d"
     },
     {
       "source": "swordigo/nxport.json",
@@ -121,7 +121,7 @@
       "architecture": "aarch64",
       "build_profile": "universal-low-glibc",
       "provenance": "build_universal.sh; pinned offline Debian Buster image sha256:036c7910ea53bc78cc213452afa92fa83d55de1c51ae54f315af58b5a41a45cf; target sysroot used for headers only",
-      "sha256": "23a7094bd909855f3172e2b9b8642d368c316b3b3907494269ef7780c363cdb9",
+      "sha256": "2f66c8f5dbf26d5be71d620269ffc537519d77668bcabd7a9f5eed3701d938de",
       "needed": [
         "libSDL2-2.0.so.0",
         "libc.so.6",

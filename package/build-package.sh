@@ -16,8 +16,8 @@ NXRELEASE=${NXRELEASE:-"$FRAMEWORK_ROOT/nxrelease/nxrelease.py"}
 DESTINATION=${1:-"$PORT_DIR/.build/Swordigo.NextOS-v$VERSION-nxrelease"}
 ARCHIVE_NAME="Swordigo.NextOS-v$VERSION.zip"
 
-NXRELEASE_VERSION='nxrelease 0.2.14'
-NXRELEASE_SHA256=694258c94a5118bac70bea44a0505a380268450875a49836d130812781dee508
+NXRELEASE_VERSION='nxrelease 0.2.15'
+NXRELEASE_SHA256=5294ef2aafaffa892d59ee855328524a132429b20de4932aaf4ce50e76307bd1
 
 fail() {
   printf 'swordigo package error: %s\n' "$*" >&2
