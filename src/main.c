@@ -1247,6 +1247,14 @@ static const char *launch_context_name(int *conclusive) {
 }
 
 static void frame_proof_verdict(void) {
+  /* Emitted after the last scheduled probe and again at shutdown, because an
+   * automated run is normally killed rather than closed: a verdict that only
+   * appears on a clean exit is missing from exactly the runs that need it. */
+  static int already_published;
+  if (already_published)
+    return;
+  already_published = 1;
+
   int conclusive = 0;
   const char *context = launch_context_name(&conclusive);
 
@@ -1551,6 +1559,8 @@ int main(int argc, char **argv) {
     if (frame == 300 || frame == 600 || frame == 900) {
       crash_diag_set_phase(CRASH_PHASE_FRAME_PROBE);
       probe_frame_once(screen_width, screen_height);
+      if (frame == 900)
+        frame_proof_verdict();
     }
     if (g_finish_before_swap) {
       crash_diag_set_phase(CRASH_PHASE_FINISH);
