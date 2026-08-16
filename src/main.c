@@ -30,6 +30,7 @@
 #include "so_util.h"
 #include "util.h"
 #include "glfix.h"
+#include "nxgl_frame_proof_adapter.h"
 
 #define MEMORY_MB 384
 #define SO_NAME "libswordigo.so"
@@ -1215,123 +1216,6 @@ static void restore_present_state(const PresentState *state) {
  * paid for: colour with alpha 0 means the scanout composited the frame away,
  * colour with alpha 255 means the picture is fine and the wrong surface is
  * being presented, and an empty frame means the engine really drew nothing. */
-/* A run that draws nothing is indistinguishable from a healthy run in every
- * signal a launcher normally has: the loop ticks, audio plays, input arrives
- * and the process exits 0.  Sampling the presented frame more than once and
- * publishing a single verdict is what makes "black screen" a reportable
- * result instead of something a human has to notice on the panel. */
-#define FRAME_PROOF_MIN_NON_BLACK 0.5 /* percent of pixels */
-
-static double g_frame_proof_best = -1.0;
-static int g_frame_proof_samples;
-
-/* Mirrors nxgl_classify_launch_context_v2. A launch that could never put an
- * image on the panel cannot be used to accuse the port of drawing nothing. */
-static const char *launch_context_name(int *conclusive) {
-  if (getenv("SSH_CONNECTION") || getenv("SSH_TTY") || getenv("SSH_CLIENT")) {
-    *conclusive = 0;
-    return "remote";
-  }
-  if (getenv("NXLAUNCH_FRONTEND")) {
-    *conclusive = 1;
-    return "frontend";
-  }
-  const char *tty = ttyname(0);
-  if (tty && strncmp(tty, "/dev/tty", 8) == 0 && tty[8] >= '0' &&
-      tty[8] <= '9') {
-    *conclusive = 1;
-    return "console";
-  }
-  *conclusive = 0;
-  return "unknown";
-}
-
-static void frame_proof_verdict(void) {
-  /* Emitted after the last scheduled probe and again at shutdown, because an
-   * automated run is normally killed rather than closed: a verdict that only
-   * appears on a clean exit is missing from exactly the runs that need it. */
-  static int already_published;
-  if (already_published)
-    return;
-  already_published = 1;
-
-  int conclusive = 0;
-  const char *context = launch_context_name(&conclusive);
-
-  if (g_frame_proof_samples <= 0) {
-    debugPrintf("gl: frame proof verdict=UNKNOWN samples=0 launch=%s "
-                "(run ended before the first probe)\n",
-                context);
-    return;
-  }
-  int black = g_frame_proof_best < FRAME_PROOF_MIN_NON_BLACK;
-  /* A drawn frame proves the port draws however it was launched. An empty one
-   * only accuses the port when the launch could have produced an image. */
-  const char *verdict = !black          ? "OK"
-                        : conclusive    ? "BLACK"
-                                        : "INCONCLUSIVE";
-  debugPrintf("gl: frame proof verdict=%s samples=%d best_non_black=%.1f%% "
-              "launch=%s\n",
-              verdict, g_frame_proof_samples, g_frame_proof_best, context);
-  if (black && !conclusive)
-    debugPrintf("gl: this launch cannot prove an image (launch=%s); re-test "
-                "from the device frontend before blaming the port\n",
-                context);
-  printf("NXEVENT {\"schema\":\"nx-event-v1\",\"source\":\"gl\","
-         "\"phase\":\"runtime\",\"status\":\"%s\",\"reason_code\":%d,"
-         "\"details\":{\"frame_proof\":\"%s\",\"samples\":%d,"
-         "\"best_non_black_pct\":%.1f,\"launch_context\":\"%s\","
-         "\"conclusive\":%s}}\n",
-         (black && conclusive) ? "fail" : "ok",
-         !black ? 6300 : (conclusive ? 6301 : 6302),
-         !black ? "ok" : (conclusive ? "black" : "inconclusive"),
-         g_frame_proof_samples, g_frame_proof_best, context,
-         conclusive ? "true" : "false");
-  fflush(stdout);
-}
-
-static void probe_frame_once(int width, int height) {
-  if (width <= 0 || height <= 0 || width > 32768 || height > 32768) {
-    debugPrintf("gl: frame probe unavailable (invalid drawable %dx%d)\n", width,
-                height);
-    return;
-  }
-  size_t pixels = (size_t)width * (size_t)height;
-  unsigned char *buffer = malloc(pixels * 4);
-  if (!buffer) {
-    debugPrintf("gl: frame probe unavailable (allocation failed)\n");
-    return;
-  }
-
-  GLint previous_framebuffer = 0;
-  if (g_bind_framebuffer_oes) {
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING_OES, &previous_framebuffer);
-    g_bind_framebuffer_oes(GL_FRAMEBUFFER_OES, 0);
-  }
-  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
-  if (g_bind_framebuffer_oes)
-    g_bind_framebuffer_oes(GL_FRAMEBUFFER_OES, (GLuint)previous_framebuffer);
-
-  size_t coloured = 0, opaque = 0, transparent = 0;
-  for (size_t i = 0; i < pixels; i++) {
-    const unsigned char *p = buffer + i * 4;
-    if (p[0] || p[1] || p[2])
-      coloured++;
-    if (p[3] == 255)
-      opaque++;
-    else if (p[3] == 0)
-      transparent++;
-  }
-  double non_black = coloured * 100.0 / pixels;
-  g_frame_proof_samples++;
-  if (non_black > g_frame_proof_best)
-    g_frame_proof_best = non_black;
-  debugPrintf("gl: frame probe %dx%d rgb_non_black=%.1f%% alpha255=%.1f%% "
-              "alpha0=%.1f%%\n",
-              width, height, non_black, opaque * 100.0 / pixels,
-              transparent * 100.0 / pixels);
-  free(buffer);
-}
 static void present_opaque_alpha(void) {
   static int logged = 0;
   PresentState state;
@@ -1397,12 +1281,12 @@ int main(int argc, char **argv) {
   /* Emit the launch receipt before anything can fail: a run that dies in GL
    * init is exactly the run whose context someone will need in order to know
    * whether the failure means anything about the port. */
-  {
-    int conclusive = 0;
-    const char *context = launch_context_name(&conclusive);
-    debugPrintf("launch: context=%s can-prove-image=%s\n", context,
-                conclusive ? "yes" : "no");
-  }
+  nxgl_frame_proof_launch_receipt();
+  /* This engine resolves every gl* through SDL_GL_GetProcAddress, and on the
+   * Mali-450 image glReadPixels is not a global symbol, so hand the adapter
+   * the same resolver the engine uses. */
+  nxgl_frame_proof_set_resolver(
+      (void *(*)(const char *))SDL_GL_GetProcAddress);
   check_data();
 
   size_t heap_size = (size_t)MEMORY_MB * 1024 * 1024;
@@ -1558,9 +1442,18 @@ int main(int argc, char **argv) {
      * first sample and a single reading turns that into a false verdict. */
     if (frame == 300 || frame == 600 || frame == 900) {
       crash_diag_set_phase(CRASH_PHASE_FRAME_PROBE);
-      probe_frame_once(screen_width, screen_height);
-      if (frame == 900)
-        frame_proof_verdict();
+      /* The framework adapter measures, publishes and writes the proof image;
+       * the local FBO rebind stays because this engine presents through an
+       * OES framebuffer on some stacks and the readback must see FBO 0. */
+      GLint previous_framebuffer = 0;
+      if (g_bind_framebuffer_oes) {
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING_OES, &previous_framebuffer);
+        g_bind_framebuffer_oes(GL_FRAMEBUFFER_OES, 0);
+      }
+      nxgl_frame_proof_sample(screen_width, screen_height);
+      nxgl_frame_proof_publish();
+      if (g_bind_framebuffer_oes)
+        g_bind_framebuffer_oes(GL_FRAMEBUFFER_OES, (GLuint)previous_framebuffer);
     }
     if (g_finish_before_swap) {
       crash_diag_set_phase(CRASH_PHASE_FINISH);
@@ -1570,7 +1463,7 @@ int main(int argc, char **argv) {
     SDL_GL_SwapWindow(g_win);
   }
 
-  frame_proof_verdict();
+  nxgl_frame_proof_publish();
   crash_diag_set_phase(CRASH_PHASE_SHUTDOWN);
   pthread_t d;
   if (pthread_create(&d, NULL, exit_deadline, NULL) == 0)

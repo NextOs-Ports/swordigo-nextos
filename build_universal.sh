@@ -162,6 +162,7 @@ SOURCES=(
   src/error.c
   src/so_util.c
   src/pthread_bridge.c
+  src/nxgl_frame_proof_adapter.c
 )
 OBJS=()
 for source in "${SOURCES[@]}"; do
